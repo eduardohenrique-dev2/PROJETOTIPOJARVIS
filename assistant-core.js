@@ -7,9 +7,15 @@ let recognitionRestartTimer = null;
 let awaitingCommand = false;
 let awaitingCommandTimer = null;
 let activeRequest = null;
+let pendingVoiceText = '';
+let pendingVoiceTimer = null;
+let lastCommittedVoiceText = '';
+let lastCommittedVoiceAt = 0;
 
 const conversationHistory = [];
 const RECOGNITION_RESTART_DELAY = 90;
+const VOICE_COMMIT_DELAY = 700;
+const VOICE_SPEECH_END_DELAY = 120;
 
 const stateConfig = {
     idle: 'Jarvis em espera',
@@ -42,6 +48,7 @@ function submitTypedCommand() {
     const input = document.getElementById('morphText');
     const text = input?.value.trim() || '';
     if (!text || assistantState === 'thinking') return;
+    clearPendingVoice();
     input.value = '';
     processCommand(text, false);
 }
@@ -105,8 +112,19 @@ function setupSpeechRecognition() {
         }
     };
 
+    recognition.onspeechend = () => {
+        if (pendingVoiceText && shouldAutoCommitVoice(pendingVoiceText)) {
+            schedulePendingVoiceCommit(VOICE_SPEECH_END_DELAY);
+        }
+    };
+
     recognition.onend = () => {
         isListening = false;
+
+        if (pendingVoiceText && shouldAutoCommitVoice(pendingVoiceText)
+            && assistantState !== 'thinking' && assistantState !== 'speaking') {
+            commitPendingVoice();
+        }
 
         if (!voiceModeEnabled) {
             if (assistantState === 'listening') setAssistantState('idle');
@@ -125,6 +143,7 @@ function setupSpeechRecognition() {
 
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
             voiceModeEnabled = false;
+            clearPendingVoice();
             clearRecognitionRestart();
             setAssistantState('error');
             showResponse('Permita o acesso ao microfone no navegador para usar comandos de voz.');
@@ -132,6 +151,12 @@ function setupSpeechRecognition() {
         }
 
         if (event.error === 'no-speech' || event.error === 'aborted' || event.error === 'network') {
+            if (pendingVoiceText && shouldAutoCommitVoice(pendingVoiceText)
+                && assistantState !== 'thinking' && assistantState !== 'speaking') {
+                commitPendingVoice();
+                return;
+            }
+
             if (voiceModeEnabled && assistantState !== 'thinking' && assistantState !== 'speaking') {
                 scheduleRecognitionRestart(event.error === 'network' ? 450 : 120);
             }
@@ -152,19 +177,93 @@ function setupSpeechRecognition() {
             const transcript = event.results[i][0].transcript.trim();
 
             if (event.results[i].isFinal) {
-                const input = document.getElementById('morphText');
-                if (input) input.value = '';
-                handleVoiceTranscript(transcript);
-            } else {
-                interimText += transcript;
+                commitVoiceTranscript(transcript);
+            } else if (transcript) {
+                interimText += `${transcript} `;
             }
         }
 
+        interimText = interimText.trim();
         if (interimText) {
-            const input = document.getElementById('morphText');
-            if (input) input.value = interimText;
+            queueInterimVoice(interimText);
         }
     };
+}
+
+function queueInterimVoice(text) {
+    const clean = String(text || '').trim();
+    if (!clean || assistantState === 'thinking' || assistantState === 'speaking') return;
+
+    pendingVoiceText = clean;
+
+    const input = document.getElementById('morphText');
+    if (input) input.value = clean;
+
+    if (shouldAutoCommitVoice(clean)) {
+        schedulePendingVoiceCommit(VOICE_COMMIT_DELAY);
+    } else {
+        clearTimeout(pendingVoiceTimer);
+        pendingVoiceTimer = null;
+    }
+}
+
+function shouldAutoCommitVoice(text) {
+    if (!voiceModeEnabled) return false;
+    if (awaitingCommand) return Boolean(String(text || '').trim());
+    return normalizeText(text).includes('jarvis');
+}
+
+function schedulePendingVoiceCommit(delay = VOICE_COMMIT_DELAY) {
+    clearTimeout(pendingVoiceTimer);
+    pendingVoiceTimer = setTimeout(() => {
+        pendingVoiceTimer = null;
+        commitPendingVoice();
+    }, delay);
+}
+
+function commitPendingVoice() {
+    const text = pendingVoiceText.trim();
+    if (!text) return;
+
+    clearPendingVoice(false);
+    const input = document.getElementById('morphText');
+    if (input) input.value = '';
+    commitVoiceTranscript(text);
+}
+
+function commitVoiceTranscript(transcript) {
+    const clean = String(transcript || '').trim();
+    if (!clean || assistantState === 'thinking' || assistantState === 'speaking') return;
+
+    const normalized = normalizeText(clean);
+    const now = Date.now();
+
+    // Alguns navegadores entregam o mesmo trecho primeiro como interim e logo depois como final.
+    // Evita processar a mesma fala duas vezes.
+    if (normalized && normalized === lastCommittedVoiceText && now - lastCommittedVoiceAt < 2200) {
+        clearPendingVoice();
+        return;
+    }
+
+    lastCommittedVoiceText = normalized;
+    lastCommittedVoiceAt = now;
+    clearPendingVoice();
+
+    const input = document.getElementById('morphText');
+    if (input) input.value = '';
+
+    handleVoiceTranscript(clean);
+}
+
+function clearPendingVoice(clearText = true) {
+    clearTimeout(pendingVoiceTimer);
+    pendingVoiceTimer = null;
+    pendingVoiceText = '';
+
+    if (clearText) {
+        const input = document.getElementById('morphText');
+        if (input && document.activeElement !== input) input.value = '';
+    }
 }
 
 function toggleListening() {
@@ -175,6 +274,7 @@ function toggleListening() {
         restartAfterSpeech = false;
         awaitingCommand = false;
         clearTimeout(awaitingCommandTimer);
+        clearPendingVoice();
         clearRecognitionRestart();
 
         if (window.speechSynthesis?.speaking) window.speechSynthesis.cancel();
@@ -190,6 +290,7 @@ function toggleListening() {
 
     voiceModeEnabled = true;
     restartAfterSpeech = false;
+    clearPendingVoice();
     setAssistantState('listening');
     startListening();
 }
@@ -249,6 +350,7 @@ function handleVoiceTranscript(transcript) {
             clearTimeout(awaitingCommandTimer);
             awaitingCommandTimer = setTimeout(() => {
                 awaitingCommand = false;
+                clearPendingVoice();
                 if (voiceModeEnabled && !isListening) scheduleRecognitionRestart(80);
             }, 6500);
             setAssistantState('listening');
@@ -273,6 +375,7 @@ async function processCommand(command, fromVoice = false) {
     const cleanCommand = command.trim();
     if (!cleanCommand) return;
 
+    clearPendingVoice();
     const resumeVoice = Boolean(fromVoice && voiceModeEnabled);
 
     if (fromVoice && isListening && recognition) {
@@ -285,7 +388,9 @@ async function processCommand(command, fromVoice = false) {
     morphToText('PENSANDO');
 
     const normalized = normalizeText(cleanCommand);
-    const systemResponse = getSystemResponse(normalized);
+    const systemResponse = typeof window.getJarvisSystemResponse === 'function'
+        ? window.getJarvisSystemResponse(normalized)
+        : getSystemResponse(normalized);
 
     if (systemResponse) {
         if (systemResponse.action === 'clear') conversationHistory.length = 0;
@@ -343,6 +448,7 @@ function getSystemResponse(command) {
     if (command.includes('parar de ouvir') || command.includes('desligar microfone')) {
         voiceModeEnabled = false;
         restartAfterSpeech = false;
+        clearPendingVoice();
         clearRecognitionRestart();
         return { text: 'Certo. Vou desligar o microfone.' };
     }
@@ -401,6 +507,7 @@ function speak(text, resumeListening = false) {
     }
 
     restartAfterSpeech = shouldResume;
+    clearPendingVoice();
     clearRecognitionRestart();
 
     if (isListening && recognition) {
