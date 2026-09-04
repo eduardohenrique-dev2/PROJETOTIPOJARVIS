@@ -7,13 +7,41 @@ export const JARVIS_MODEL = !configuredModel || LEGACY_MODELS.has(configuredMode
 const FALLBACK_MODEL = 'gemini-3.5-flash-lite';
 const INTERACTIONS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1/interactions';
 
-const JARVIS_INSTRUCTIONS = `Você é J.A.R.V.I.S., um assistente pessoal futurista em desenvolvimento.
-Responda sempre em português do Brasil, a menos que o usuário peça outro idioma.
-Sua resposta será lida em voz alta, então seja natural, clara e concisa.
-Prefira respostas de 1 a 4 frases para perguntas simples.
-Não diga que executou ações no computador, abriu programas, enviou mensagens ou controlou dispositivos se isso não tiver realmente acontecido.
-Quando não tiver uma integração necessária, explique de forma curta o que falta.
-Você pode ajudar com estudos, programação, projetos, ideias, explicações e conversas gerais.`;
+const ALLOWED_ACTIONS = {
+    website: new Set(['youtube', 'google', 'github', 'gmail', 'whatsapp', 'spotify', 'maps']),
+    'web-search': new Set(['google', 'youtube']),
+    app: new Set(['calculator', 'notepad', 'explorer', 'vscode', 'paint', 'taskmanager'])
+};
+
+const JARVIS_INSTRUCTIONS = `Você é J.A.R.V.I.S., um assistente pessoal futurista.
+Converse naturalmente em português do Brasil, como um assistente humano prestativo e inteligente.
+Sua resposta será lida em voz alta, então prefira frases naturais, claras e concisas.
+Use o contexto recente para entender referências como "abre ele", "pesquisa isso", "quero programar agora" ou "onde vejo meus arquivos".
+
+Além de conversar, você pode sugerir UMA ação estruturada quando a intenção do usuário for realmente executar algo no computador ou abrir/pesquisar algo.
+Capacidades disponíveis:
+- website: youtube, google, github, gmail, whatsapp, spotify, maps
+- web-search: google ou youtube, sempre com query
+- app: calculator, notepad, explorer, vscode, paint, taskmanager
+
+Entenda linguagem natural e sinônimos. Exemplos de intenção:
+- "abre onde ficam meus arquivos" -> app explorer
+- "quero programar agora, abre o editor" -> app vscode
+- "coloca o youtube pra mim" -> website youtube
+- "procura um vídeo de ESP32" -> web-search youtube com query "ESP32"
+- "pesquisa sobre CLP" -> web-search google com query "CLP"
+- "vamos conversar sobre ESP32" -> nenhuma ação, apenas conversa
+
+Não execute uma ação só porque um programa/site foi mencionado. A intenção de abrir, pesquisar ou executar deve estar clara.
+Se a ação pedida não estiver nas capacidades disponíveis, responda naturalmente que essa integração ainda não existe e use action null.
+Nunca invente que uma ação já foi executada; você apenas solicita a ação e o sistema executará depois.
+
+IMPORTANTE: sua saída deve ser SOMENTE um JSON válido, sem markdown e sem texto fora dele, exatamente neste formato:
+{"text":"resposta natural para o usuário","action":null}
+ou
+{"text":"resposta natural curta adequada à ação","action":{"type":"app|website|web-search","target":"alvo permitido","query":"somente para web-search"}}
+
+Para perguntas simples, prefira 1 a 4 frases.`;
 
 function sanitizeMessages(messages) {
     if (!Array.isArray(messages)) return [];
@@ -34,7 +62,7 @@ function buildConversationInput(messages) {
         return `${speaker}: ${message.content}`;
     });
 
-    return `Conversa recente:\n${lines.join('\n')}\n\nResponda à última mensagem do Usuário levando em conta o contexto acima.`;
+    return `Conversa recente:\n${lines.join('\n')}\n\nInterprete a última mensagem do Usuário e responda no JSON solicitado.`;
 }
 
 function extractOutputText(data) {
@@ -51,6 +79,54 @@ function extractOutputText(data) {
     }
 
     return chunks.join('\n').trim();
+}
+
+function validateAction(action) {
+    if (!action || typeof action !== 'object') return null;
+
+    const type = typeof action.type === 'string' ? action.type : '';
+    const target = typeof action.target === 'string' ? action.target : '';
+    const allowedTargets = ALLOWED_ACTIONS[type];
+
+    if (!allowedTargets || !allowedTargets.has(target)) return null;
+
+    if (type === 'web-search') {
+        const query = typeof action.query === 'string' ? action.query.trim().slice(0, 500) : '';
+        if (!query) return null;
+        return { type, target, query };
+    }
+
+    return { type, target };
+}
+
+function parseJarvisEnvelope(rawText) {
+    const clean = String(rawText || '')
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+    try {
+        const parsed = JSON.parse(clean);
+        const text = typeof parsed.text === 'string' ? parsed.text.trim() : '';
+        if (!text) return { text: clean, action: null };
+        return { text, action: validateAction(parsed.action) };
+    } catch {
+        const firstBrace = clean.indexOf('{');
+        const lastBrace = clean.lastIndexOf('}');
+
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+            try {
+                const parsed = JSON.parse(clean.slice(firstBrace, lastBrace + 1));
+                const text = typeof parsed.text === 'string' ? parsed.text.trim() : '';
+                if (text) return { text, action: validateAction(parsed.action) };
+            } catch {
+                // Mantém fallback abaixo.
+            }
+        }
+
+        return { text: clean || 'Estou pronto.', action: null };
+    }
 }
 
 function normalizeGeminiError(data, status, model) {
@@ -88,7 +164,7 @@ async function requestGemini(apiKey, model, input) {
             input,
             store: false,
             generation_config: {
-                max_output_tokens: 640,
+                max_output_tokens: 700,
                 thinking_level: 'low'
             }
         })
@@ -121,15 +197,17 @@ export async function createJarvisReply(messages) {
         const { response, data } = await requestGemini(apiKey, model, input);
 
         if (response.ok) {
-            const text = extractOutputText(data);
-            if (!text) {
+            const rawText = extractOutputText(data);
+            if (!rawText) {
                 const error = new Error('A IA respondeu, mas não retornou texto.');
                 error.code = 'EMPTY_RESPONSE';
                 throw error;
             }
 
+            const envelope = parseJarvisEnvelope(rawText);
             return {
-                text,
+                text: envelope.text,
+                action: envelope.action,
                 model: data.model || model,
                 provider: 'gemini',
                 interactionId: data.id || null
@@ -138,7 +216,6 @@ export async function createJarvisReply(messages) {
 
         lastFailure = { response, data, model };
 
-        // Em caso de modelo indisponível ou cota temporária, tenta o Flash-Lite.
         if (![404, 429].includes(response.status) || model === FALLBACK_MODEL) {
             break;
         }
