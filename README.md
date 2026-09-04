@@ -1,47 +1,36 @@
 # PROJETOTIPOJARVIS
 
-Protótipo de assistente J.A.R.V.I.S. com partículas 3D, comandos por voz, resposta falada, integração com Gemini e ações locais no Windows.
+Assistente J.A.R.V.I.S. com interface 3D, voz contínua, Gemini, interpretação natural de intenções e ações locais/remotas seguras no Windows.
 
 ## O que já funciona
 
-- Interface 3D com 12 mil partículas.
-- Estados visuais: espera, ouvindo, pensando e respondendo.
-- Reconhecimento de voz em português do Brasil no Chrome/Edge compatível.
-- Resposta por voz usando Speech Synthesis do navegador.
-- Comandos locais de hora e data.
-- Conversa com IA para perguntas gerais.
+- Interface principal com Black Hole em Three.js, bloom, lensing e campo estelar.
+- Reconhecimento de voz em português do Brasil com modo persistente.
+- Resposta falada usando Speech Synthesis.
+- Conversa natural com Gemini 3.6 Flash.
+- A IA pode identificar quando a fala é apenas conversa ou quando existe uma ação a executar.
+- Ações estruturadas para sites, pesquisas e aplicativos permitidos.
 - Histórico curto da conversa no navegador.
-- Backend que mantém a chave do Gemini fora do frontend.
-- Gemini Interactions API com `gemini-3.6-flash` e fallback configurado.
-- Abertura de sites e pesquisas na web.
-- Abertura de aplicativos permitidos no Windows quando executado localmente.
-- Servidor local limitado a `127.0.0.1` para proteger os comandos do computador.
+- Backend que mantém chaves e segredos fora do frontend.
+- Servidor local limitado a `127.0.0.1`.
+- Jarvis Agent para controle remoto seguro do PC através da versão hospedada.
+- Indicador `PC LOCAL`, `PC ONLINE`, `PC OFFLINE` ou `PC NÃO CONFIG.` na interface.
 
-## 1. Atualizar seu projeto local
+## Uso local
 
-No terminal do VS Code, dentro da pasta do projeto:
+Atualize o projeto:
 
-```bash
+```powershell
 git pull origin main
 ```
 
-## 2. Configurar a chave do Gemini
-
-Se ainda não existir um arquivo `.env`, copie `.env.example`.
-
-No Prompt de Comando do Windows (CMD):
-
-```cmd
-copy .env.example .env
-```
-
-No PowerShell:
+Se ainda não existir `.env`:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Depois edite `.env`:
+Configure pelo menos:
 
 ```env
 GEMINI_API_KEY=coloque_sua_chave_aqui
@@ -49,84 +38,95 @@ GEMINI_MODEL=gemini-3.6-flash
 PORT=3000
 ```
 
-> Nunca envie o arquivo `.env` para o GitHub. Ele já está incluído no `.gitignore`.
+Rode:
 
-## 3. Rodar localmente
-
-É necessário Node.js 20 ou superior.
-
-```bash
+```powershell
 npm start
 ```
 
-O terminal deve mostrar:
-
-```text
-JARVIS online em http://localhost:3000
-IA Gemini: configurada
-Ações locais: habilitadas somente neste computador
-```
-
-Abra no navegador:
+Abra:
 
 ```text
 http://localhost:3000
 ```
 
-## 4. Comandos para testar
+## Conversa natural
 
-### Conversa e comandos básicos
-
-- `Jarvis, que horas são?`
-- `Jarvis, qual a data de hoje?`
-- `Jarvis, me explique o que é um CLP.`
-- `Jarvis, crie uma ideia de projeto com ESP32.`
-
-### Abrir sites
-
-- `Jarvis, abra o YouTube.`
-- `Jarvis, abra o Google.`
-- `Jarvis, abra o GitHub.`
-- `Jarvis, abra o Gmail.`
-- `Jarvis, abra o WhatsApp.`
-- `Jarvis, abra o Spotify.`
-- `Jarvis, abra o Google Maps.`
-
-### Pesquisar
-
-- `Jarvis, pesquise ESP32 no Google.`
-- `Jarvis, procure automação industrial na internet.`
-- `Jarvis, pesquise ESP32 no YouTube.`
-- `Jarvis, abra o YouTube e pesquise Arduino.`
-
-### Abrir programas no Windows
-
-- `Jarvis, abra a calculadora.`
-- `Jarvis, abra o bloco de notas.`
-- `Jarvis, abra o explorador de arquivos.`
-- `Jarvis, abra o VS Code.`
-- `Jarvis, abra o Paint.`
-- `Jarvis, abra o gerenciador de tarefas.`
-
-Os programas são executados por uma lista fechada no servidor. O Jarvis não aceita comandos arbitrários do sistema operacional.
-
-## Estrutura
+Não é necessário decorar comandos exatos. Exemplos:
 
 ```text
-index.html       Interface
-Style.css        Estilo visual
-js.js            Partículas, voz e lógica principal
-actions.js       Interpretação e execução de ações
-ai-core.js       Integração segura com Gemini Interactions API
-api/chat.js      Endpoint serverless para conversa na Vercel
-server.js        Servidor local, IA e ações do Windows
-.env.example     Modelo das variáveis de ambiente
-.gitignore       Proteção de arquivos locais/segredos
-package.json     Scripts do projeto
+Jarvis, quero começar a programar.
+Jarvis, abre onde eu vejo meus arquivos.
+Jarvis, tô afim de ver uns vídeos sobre robótica.
+Jarvis, pesquisa pra mim sobre ESP32.
+Jarvis, o que você acha de usar um ESP32 nesse projeto?
 ```
 
-## Deploy na Vercel
+A Gemini interpreta a intenção. Quando existir uma ação, ela retorna uma estrutura controlada; nenhum texto da IA é executado diretamente no terminal.
 
-Ao importar o repositório na Vercel, configure `GEMINI_API_KEY` como variável de ambiente do projeto. Opcionalmente configure `GEMINI_MODEL=gemini-3.6-flash`.
+## Acesso remoto ao computador
 
-Na versão hospedada, conversa com IA e abertura de links continuam possíveis. A abertura de aplicativos do Windows funciona somente com o servidor rodando localmente no computador, pois um site hospedado não deve controlar programas da máquina diretamente.
+Para controlar o PC pela interface hospedada, existe agora o `Jarvis Agent`.
+
+O fluxo é:
+
+```text
+Celular → Vercel → HTTPS assinado → Tunnel → Jarvis Agent → Windows
+```
+
+No PC:
+
+```powershell
+npm run agent
+```
+
+O Agent usa uma lista fechada de capacidades e autenticação HMAC-SHA256. Ele não aceita shell arbitrário.
+
+O passo a passo completo para configurar o segredo, Cloudflare Tunnel e variáveis da Vercel está em:
+
+```text
+REMOTE_AGENT.md
+```
+
+## Estrutura principal
+
+```text
+index.html              Interface do Jarvis
+style.css               HUD e layout
+script.js               Black Hole / Three.js
+assistant-core.js       Voz, conversa e fluxo principal
+actions.js              Execução de ações no frontend + status do PC
+ai-core.js               Gemini e interpretação natural de ações
+local-actions.js         Lista central de ações permitidas
+agent.js                 Jarvis Agent que roda no computador
+agent-protocol.js        Assinatura e validação HMAC
+remote-agent-client.js   Cliente usado pela Vercel para acessar o Agent
+api/chat.js              Endpoint Gemini na Vercel
+api/action.js            Proxy seguro de ações remotas
+api/agent-status.js      Status remoto do computador
+server.js                Servidor local
+REMOTE_AGENT.md          Guia de configuração do acesso remoto
+.env.example             Modelo de variáveis de ambiente
+```
+
+## Segurança
+
+- `.env` continua ignorado pelo Git.
+- Chaves Gemini e segredo do Agent nunca devem ir para o frontend ou GitHub.
+- O servidor local e o Agent escutam somente em localhost.
+- Para acesso remoto, use um tunnel HTTPS; não faça port forwarding da porta do Agent.
+- O Agent aceita apenas ações pré-definidas em `local-actions.js`.
+- As chamadas remotas são assinadas e possuem timestamp curto para reduzir replay.
+
+## Vercel
+
+Configure na Vercel:
+
+```env
+GEMINI_API_KEY=SUA_CHAVE
+GEMINI_MODEL=gemini-3.6-flash
+JARVIS_AGENT_URL=https://SEU-TUNNEL-HTTPS
+JARVIS_AGENT_SECRET=O_MESMO_SEGREDO_DO_PC
+```
+
+Se `JARVIS_AGENT_URL` e `JARVIS_AGENT_SECRET` não estiverem configurados, a conversa com a IA continua funcionando e a interface exibirá que o PC remoto ainda não está configurado.
