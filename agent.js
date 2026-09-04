@@ -15,9 +15,15 @@ const HOST = '127.0.0.1';
 const PORT = Number(process.env.AGENT_PORT || 8787);
 const SECRET = (process.env.JARVIS_AGENT_SECRET || '').trim();
 const VERSION = '1.0.0';
+const FORBIDDEN_SECRETS = new Set([
+    'troque_por_um_segredo_forte_e_unico',
+    'sua_chave_aqui',
+    'changeme',
+    'change-me'
+]);
 
-if (!SECRET || SECRET.length < 24) {
-    console.error('JARVIS_AGENT_SECRET ausente ou muito curto. Use pelo menos 24 caracteres aleatórios no arquivo .env.');
+if (!SECRET || SECRET.length < 24 || FORBIDDEN_SECRETS.has(SECRET.toLowerCase())) {
+    console.error('JARVIS_AGENT_SECRET ausente, inseguro ou ainda com o valor de exemplo. Gere um segredo aleatório forte antes de iniciar o Agent.');
     process.exit(1);
 }
 
@@ -97,20 +103,32 @@ function allowActionRequest() {
 function readRawBody(req, maxBytes) {
     return new Promise((resolve, reject) => {
         let body = '';
+        let settled = false;
+
+        const fail = (error) => {
+            if (settled) return;
+            settled = true;
+            reject(error);
+        };
 
         req.on('data', (chunk) => {
+            if (settled) return;
             body += chunk;
             if (Buffer.byteLength(body, 'utf8') > maxBytes) {
                 const error = new Error('Corpo da requisição muito grande.');
                 error.code = 'PAYLOAD_TOO_LARGE';
                 error.status = 413;
-                reject(error);
+                fail(error);
                 req.destroy();
             }
         });
 
-        req.on('end', () => resolve(body));
-        req.on('error', reject);
+        req.on('end', () => {
+            if (settled) return;
+            settled = true;
+            resolve(body);
+        });
+        req.on('error', fail);
     });
 }
 
