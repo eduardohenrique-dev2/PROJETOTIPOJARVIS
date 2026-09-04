@@ -13,13 +13,16 @@ let isListening = false;
 let restartAfterSpeech = false;
 let awaitingCommand = false;
 let awaitingCommandTimer = null;
+let activeRequest = null;
+
+const conversationHistory = [];
 
 const stateConfig = {
     idle: { label: 'Jarvis em espera', hue: 0.53, saturation: 0.72 },
     listening: { label: 'Ouvindo...', hue: 0.36, saturation: 0.82 },
-    thinking: { label: 'Processando...', hue: 0.75, saturation: 0.78 },
+    thinking: { label: 'Pensando...', hue: 0.75, saturation: 0.78 },
     speaking: { label: 'Respondendo...', hue: 0.56, saturation: 0.88 },
-    error: { label: 'Não consegui acessar o microfone', hue: 0.0, saturation: 0.82 }
+    error: { label: 'Atenção necessária', hue: 0.0, saturation: 0.82 }
 };
 
 function init() {
@@ -95,23 +98,21 @@ function setupEventListeners() {
     const micBtn = document.getElementById('micBtn');
     const input = document.getElementById('morphText');
 
-    typeBtn.addEventListener('click', () => {
-        const text = input.value.trim();
-        if (text) {
-            morphToText(text);
-        }
-    });
-
+    typeBtn.addEventListener('click', submitTypedCommand);
     micBtn.addEventListener('click', toggleListening);
 
     input.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-            const text = input.value.trim();
-            if (text) {
-                morphToText(text);
-            }
-        }
+        if (event.key === 'Enter') submitTypedCommand();
     });
+}
+
+function submitTypedCommand() {
+    const input = document.getElementById('morphText');
+    const text = input.value.trim();
+    if (!text || assistantState === 'thinking') return;
+
+    input.value = '';
+    processCommand(text, false);
 }
 
 function setAssistantState(state) {
@@ -120,6 +121,7 @@ function setAssistantState(state) {
     const statusText = document.getElementById('statusText');
     const statusDot = document.getElementById('statusDot');
     const micBtn = document.getElementById('micBtn');
+    const typeBtn = document.getElementById('typeBtn');
 
     if (statusText) statusText.textContent = config.label;
     if (statusDot) statusDot.dataset.state = state;
@@ -127,8 +129,17 @@ function setAssistantState(state) {
         micBtn.classList.toggle('active', state === 'listening');
         micBtn.setAttribute('aria-pressed', state === 'listening' ? 'true' : 'false');
     }
+    if (typeBtn) typeBtn.disabled = state === 'thinking';
 
     if (particles) applyStateColors(state);
+}
+
+function showResponse(text, thinking = false) {
+    const responseText = document.getElementById('responseText');
+    if (!responseText) return;
+
+    responseText.textContent = text;
+    responseText.classList.toggle('thinking', thinking);
 }
 
 function applyStateColors(state) {
@@ -157,7 +168,7 @@ function createTextPoints(text) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const padding = 30;
     let fontSize = 100;
-    const safeText = text.slice(0, 28);
+    const safeText = text.slice(0, 22);
 
     ctx.font = `bold ${fontSize}px Arial`;
     let textWidth = ctx.measureText(safeText).width;
@@ -197,11 +208,12 @@ function createTextPoints(text) {
     return points;
 }
 
-function morphToText(text, returnDelay = 4000) {
+function morphToText(text, returnDelay = 2600) {
+    if (!text) return;
+
     const textPoints = createTextPoints(text);
     const targets = new Float32Array(PARTICLE_COUNT * 3);
     currentShape = 'text';
-
     particles.rotation.set(0, 0, 0);
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -238,7 +250,7 @@ function setupSpeechRecognition() {
             micBtn.disabled = true;
             micBtn.title = 'Reconhecimento de voz não suportado neste navegador';
         }
-        document.getElementById('statusText').textContent = 'Use Chrome ou Edge para comandos por voz';
+        showResponse('O reconhecimento de voz deste navegador não é compatível. Você ainda pode conversar digitando.');
         return;
     }
 
@@ -254,19 +266,19 @@ function setupSpeechRecognition() {
 
     recognition.onend = () => {
         isListening = false;
-
-        if (restartAfterSpeech) return;
+        if (restartAfterSpeech || assistantState === 'thinking' || assistantState === 'speaking') return;
         if (assistantState === 'listening') setAssistantState('idle');
     };
 
     recognition.onerror = (event) => {
-        if (event.error === 'no-speech') return;
+        if (event.error === 'no-speech' || event.error === 'aborted') return;
 
         console.warn('Erro no reconhecimento de voz:', event.error);
         isListening = false;
 
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
             setAssistantState('error');
+            showResponse('Permita o acesso ao microfone no navegador para usar comandos de voz.');
         } else if (!restartAfterSpeech) {
             setAssistantState('idle');
         }
@@ -279,7 +291,7 @@ function setupSpeechRecognition() {
             const transcript = event.results[i][0].transcript.trim();
 
             if (event.results[i].isFinal) {
-                document.getElementById('morphText').value = transcript;
+                document.getElementById('morphText').value = '';
                 handleVoiceTranscript(transcript);
             } else {
                 interimText += transcript;
@@ -295,13 +307,19 @@ function setupSpeechRecognition() {
 function toggleListening() {
     if (!recognition) return;
 
+    if (assistantState === 'speaking') {
+        window.speechSynthesis?.cancel();
+    }
+
     if (isListening) {
         restartAfterSpeech = false;
         recognition.stop();
         setAssistantState('idle');
+        showResponse('Microfone pausado. Clique nele para voltar a ouvir.');
         return;
     }
 
+    restartAfterSpeech = false;
     startListening();
 }
 
@@ -326,81 +344,173 @@ function normalizeText(text) {
 
 function handleVoiceTranscript(transcript) {
     const normalized = normalizeText(transcript);
-    const wakeIndex = normalized.indexOf('jarvis');
 
-    if (wakeIndex !== -1) {
-        const command = normalized.slice(wakeIndex + 'jarvis'.length).trim();
-        morphToText('JARVIS', 2600);
+    if (normalized.includes('jarvis')) {
+        const command = transcript.replace(/^.*?jarvis[\s,.:;!?-]*/i, '').trim();
+        morphToText('JARVIS', 2200);
 
         if (!command) {
             awaitingCommand = true;
             clearTimeout(awaitingCommandTimer);
             awaitingCommandTimer = setTimeout(() => {
                 awaitingCommand = false;
-            }, 8000);
-            speak('Sim, estou ouvindo.');
+            }, 9000);
+            speak('Sim, estou ouvindo.', true);
             return;
         }
 
         awaitingCommand = false;
-        processCommand(command);
+        clearTimeout(awaitingCommandTimer);
+        processCommand(command, true);
         return;
     }
 
-    if (awaitingCommand && normalized) {
+    if (awaitingCommand && transcript.trim()) {
         awaitingCommand = false;
         clearTimeout(awaitingCommandTimer);
-        processCommand(normalized);
+        processCommand(transcript.trim(), true);
     }
 }
 
-function processCommand(command) {
-    setAssistantState('thinking');
-    morphToText(command.toUpperCase().slice(0, 18), 3400);
+async function processCommand(command, fromVoice = false) {
+    const cleanCommand = command.trim();
+    if (!cleanCommand) return;
 
+    if (fromVoice && isListening && recognition) {
+        restartAfterSpeech = true;
+        try {
+            recognition.stop();
+        } catch (error) {
+            console.warn(error);
+        }
+    }
+
+    setAssistantState('thinking');
+    showResponse(`Processando: “${cleanCommand}”`, true);
+    morphToText('PENSANDO', 2400);
+
+    const normalized = normalizeText(cleanCommand);
+    const localResponse = getLocalResponse(normalized);
+
+    if (localResponse) {
+        if (localResponse.action === 'clear') conversationHistory.length = 0;
+        showResponse(localResponse.text);
+        speak(localResponse.text, fromVoice);
+        return;
+    }
+
+    try {
+        const result = await askJarvisAI(cleanCommand);
+        showResponse(result.text);
+        document.getElementById('aiMode').textContent = result.model || 'IA online';
+        morphToText('JARVIS', 2000);
+        speak(result.text, fromVoice);
+    } catch (error) {
+        console.error(error);
+        setAssistantState('error');
+
+        let message = 'Não consegui acessar meu módulo de inteligência agora.';
+        if (error.code === 'MISSING_API_KEY') {
+            message = 'Meu módulo de IA ainda não está configurado. Adicione sua OPENAI_API_KEY no arquivo .env do servidor.';
+        } else if (location.protocol === 'file:') {
+            message = 'Abra o Jarvis pelo servidor local usando npm start. Abrir o HTML diretamente não permite acessar a API.';
+        } else if (error.message) {
+            message = `Não consegui consultar a IA: ${error.message}`;
+        }
+
+        showResponse(message);
+        speak(message, fromVoice);
+    }
+}
+
+function getLocalResponse(command) {
     const now = new Date();
-    let response = '';
 
     if (command.includes('que horas') || command === 'horas' || command.includes('hora agora')) {
         const time = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        response = `Agora são ${time}.`;
-    } else if (command.includes('que dia') || command.includes('data de hoje') || command.includes('qual a data')) {
+        return { text: `Agora são ${time}.` };
+    }
+
+    if (command.includes('que dia') || command.includes('data de hoje') || command.includes('qual a data')) {
         const date = now.toLocaleDateString('pt-BR', {
             weekday: 'long',
             day: '2-digit',
             month: 'long',
             year: 'numeric'
         });
-        response = `Hoje é ${date}.`;
-    } else if (command.includes('quem e voce') || command.includes('qual seu nome') || command.includes('se apresente')) {
-        response = 'Eu sou Jarvis, seu assistente em desenvolvimento.';
-    } else if (command.includes('bom dia')) {
-        response = 'Bom dia. Sistemas online e prontos para trabalhar.';
-    } else if (command.includes('boa tarde')) {
-        response = 'Boa tarde. Estou à disposição.';
-    } else if (command.includes('boa noite')) {
-        response = 'Boa noite. Estou à disposição.';
-    } else if (command === 'ola' || command.includes('tudo bem')) {
-        response = 'Olá. Tudo funcionando por aqui.';
-    } else if (command.includes('parar de ouvir') || command.includes('desligar microfone')) {
-        restartAfterSpeech = false;
-        response = 'Certo. Vou desligar o microfone.';
-        speak(response, false);
-        return;
-    } else {
-        response = `Eu ouvi: ${command}. Esse comando ainda não está conectado à minha inteligência.`;
+        return { text: `Hoje é ${date}.` };
     }
 
-    speak(response, true);
+    if (command.includes('quem e voce') || command.includes('qual seu nome') || command.includes('se apresente')) {
+        return { text: 'Eu sou Jarvis, seu assistente pessoal em desenvolvimento, agora conectado a um módulo de inteligência artificial.' };
+    }
+
+    if (command.includes('bom dia')) return { text: 'Bom dia. Sistemas online e prontos para trabalhar.' };
+    if (command.includes('boa tarde')) return { text: 'Boa tarde. Estou à disposição.' };
+    if (command.includes('boa noite')) return { text: 'Boa noite. Estou à disposição.' };
+
+    if (command.includes('limpar conversa') || command.includes('esquecer conversa') || command.includes('zerar memoria')) {
+        return { text: 'Certo. Limpei o contexto desta conversa.', action: 'clear' };
+    }
+
+    if (command.includes('parar de ouvir') || command.includes('desligar microfone')) {
+        restartAfterSpeech = false;
+        return { text: 'Certo. Vou desligar o microfone.' };
+    }
+
+    return null;
 }
 
-function speak(text, resumeListening = true) {
+async function askJarvisAI(message) {
+    conversationHistory.push({ role: 'user', content: message });
+    while (conversationHistory.length > 12) conversationHistory.shift();
+
+    if (activeRequest) activeRequest.abort();
+    activeRequest = new AbortController();
+    const timeout = setTimeout(() => activeRequest.abort(), 45000);
+
+    try {
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: conversationHistory }),
+            signal: activeRequest.signal
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            const error = new Error(data.error || `Servidor respondeu ${response.status}.`);
+            error.code = data.code || 'API_ERROR';
+            throw error;
+        }
+
+        if (!data.text) throw new Error('A IA não retornou uma resposta de texto.');
+
+        conversationHistory.push({ role: 'assistant', content: data.text });
+        while (conversationHistory.length > 12) conversationHistory.shift();
+
+        return data;
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            throw new Error('a resposta demorou além do limite.');
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeout);
+        activeRequest = null;
+    }
+}
+
+function speak(text, resumeListening = false) {
     if (!('speechSynthesis' in window)) {
-        setAssistantState(isListening ? 'listening' : 'idle');
+        restartAfterSpeech = false;
+        setAssistantState(resumeListening ? 'listening' : 'idle');
+        if (resumeListening) setTimeout(startListening, 250);
         return;
     }
 
-    restartAfterSpeech = resumeListening && isListening;
+    restartAfterSpeech = resumeListening;
 
     if (isListening && recognition) {
         try {
@@ -417,34 +527,26 @@ function speak(text, resumeListening = true) {
     utterance.rate = 1.02;
     utterance.pitch = 0.92;
 
-    utterance.onstart = () => {
-        setAssistantState('speaking');
-    };
+    const voices = window.speechSynthesis.getVoices();
+    const brazilianVoice = voices.find((voice) => voice.lang?.toLowerCase() === 'pt-br');
+    if (brazilianVoice) utterance.voice = brazilianVoice;
 
-    utterance.onend = () => {
+    utterance.onstart = () => setAssistantState('speaking');
+
+    const finish = () => {
         const shouldRestart = restartAfterSpeech;
         restartAfterSpeech = false;
 
         if (shouldRestart) {
             setAssistantState('listening');
-            setTimeout(startListening, 250);
+            setTimeout(startListening, 300);
         } else {
             setAssistantState('idle');
         }
     };
 
-    utterance.onerror = () => {
-        const shouldRestart = restartAfterSpeech;
-        restartAfterSpeech = false;
-
-        if (shouldRestart) {
-            setAssistantState('listening');
-            setTimeout(startListening, 250);
-        } else {
-            setAssistantState('idle');
-        }
-    };
-
+    utterance.onend = finish;
+    utterance.onerror = finish;
     window.speechSynthesis.speak(utterance);
 }
 
@@ -470,11 +572,15 @@ function animate() {
     if (assistantState === 'listening') {
         const pulse = 1 + Math.sin(performance.now() * 0.006) * 0.025;
         particles.scale.setScalar(pulse);
+    } else if (assistantState === 'thinking') {
+        const pulse = 1 + Math.sin(performance.now() * 0.009) * 0.018;
+        particles.scale.setScalar(pulse);
     } else if (assistantState === 'speaking') {
         const pulse = 1 + Math.sin(performance.now() * 0.012) * 0.04;
         particles.scale.setScalar(pulse);
     } else {
-        particles.scale.lerp(new THREE.Vector3(1, 1, 1), 0.08);
+        const scale = particles.scale.x + (1 - particles.scale.x) * 0.08;
+        particles.scale.setScalar(scale);
     }
 
     renderer.render(scene, camera);
