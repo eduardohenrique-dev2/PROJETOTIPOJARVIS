@@ -18,6 +18,7 @@ const publicFiles = new Map([
     ['/style.css', 'style.css'],
     ['/script.js', 'script.js'],
     ['/assistant-core.js', 'assistant-core.js'],
+    ['/system-context.js', 'system-context.js'],
     ['/actions.js', 'actions.js']
 ]);
 
