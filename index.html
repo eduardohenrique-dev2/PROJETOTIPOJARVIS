@@ -33,7 +33,7 @@
                 <small id="aiMode">voz + texto</small>
             </div>
             <p id="responseText">Ative o microfone e diga “Jarvis”, ou digite uma pergunta abaixo.</p>
-            <div class="conversation-hint">Ex.: “Jarvis, me explique o que é um CLP.”</div>
+            <div class="conversation-hint">Ex.: “Jarvis, abra o YouTube” ou “Jarvis, me explique o que é um CLP.”</div>
         </section>
     </main>
 
@@ -48,7 +48,7 @@
                 </svg>
             </button>
 
-            <input type="text" id="morphText" placeholder="Pergunte alguma coisa ao Jarvis..." maxlength="500" autocomplete="off">
+            <input type="text" id="morphText" placeholder="Pergunte ou peça uma ação ao Jarvis..." maxlength="500" autocomplete="off">
 
             <button id="typeBtn" type="button" aria-label="Enviar pergunta">
                 <span class="button-content">
@@ -62,5 +62,6 @@
     </div>
 
     <script src="./js.js"></script>
+    <script src="./actions.js"></script>
 </body>
 </html>
