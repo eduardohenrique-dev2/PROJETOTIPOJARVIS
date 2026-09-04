@@ -1,4 +1,7 @@
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const configuredModel = (process.env.GEMINI_MODEL || '').trim();
+const DEFAULT_MODEL = !configuredModel || configuredModel === 'gemini-2.5-flash'
+    ? 'gemini-3.6-flash'
+    : configuredModel;
 
 const JARVIS_INSTRUCTIONS = `Você é J.A.R.V.I.S., um assistente pessoal futurista em desenvolvimento.
 Responda sempre em português do Brasil, a menos que o usuário peça outro idioma.
@@ -21,24 +24,36 @@ function sanitizeMessages(messages) {
         .slice(-12);
 }
 
-function toGeminiContents(messages) {
+function toInteractionSteps(messages) {
     return messages.map((message) => ({
-        role: message.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: message.content }]
+        type: message.role === 'assistant' ? 'model_output' : 'user_input',
+        content: [
+            {
+                type: 'text',
+                text: message.content
+            }
+        ]
     }));
 }
 
 function extractOutputText(data) {
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    return parts
-        .filter((part) => typeof part?.text === 'string')
-        .map((part) => part.text)
-        .join('\n')
-        .trim();
+    const chunks = [];
+
+    for (const step of data?.steps || []) {
+        if (step?.type !== 'model_output') continue;
+
+        for (const content of step.content || []) {
+            if (content?.type === 'text' && typeof content.text === 'string') {
+                chunks.push(content.text);
+            }
+        }
+    }
+
+    return chunks.join('\n').trim();
 }
 
 function normalizeGeminiError(data, status) {
-    const rawMessage = data?.error?.message || `Erro da API Gemini (${status}).`;
+    const rawMessage = data?.error?.message || data?.message || `Erro da API Gemini (${status}).`;
 
     if (status === 429) {
         return 'O limite gratuito do Gemini foi atingido por enquanto. Aguarde um pouco e tente novamente.';
@@ -48,8 +63,12 @@ function normalizeGeminiError(data, status) {
         return 'A chave Gemini não tem permissão para essa solicitação. Confira a chave e o projeto no Google AI Studio.';
     }
 
-    if (status === 400 && /API key/i.test(rawMessage)) {
+    if ((status === 400 || status === 401) && /API key|api_key|key/i.test(rawMessage)) {
         return 'A chave Gemini parece inválida. Confira GEMINI_API_KEY no arquivo .env.';
+    }
+
+    if (status === 404 && /model/i.test(rawMessage)) {
+        return 'O modelo Gemini configurado não está disponível. Use GEMINI_MODEL=gemini-3.6-flash.';
     }
 
     return rawMessage;
@@ -70,25 +89,20 @@ export async function createJarvisReply(messages) {
         throw error;
     }
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(DEFAULT_MODEL)}:generateContent`;
-
-    const response = await fetch(endpoint, {
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'x-goog-api-key': apiKey
         },
         body: JSON.stringify({
-            system_instruction: {
-                parts: [{ text: JARVIS_INSTRUCTIONS }]
-            },
-            contents: toGeminiContents(cleanMessages),
-            generationConfig: {
-                temperature: 0.7,
-                maxOutputTokens: 640,
-                thinkingConfig: {
-                    thinkingBudget: 256
-                }
+            model: DEFAULT_MODEL,
+            system_instruction: JARVIS_INSTRUCTIONS,
+            input: toInteractionSteps(cleanMessages),
+            store: false,
+            generation_config: {
+                max_output_tokens: 640,
+                thinking_level: 'low'
             }
         })
     });
@@ -104,17 +118,15 @@ export async function createJarvisReply(messages) {
 
     const text = extractOutputText(data);
     if (!text) {
-        const blockReason = data?.promptFeedback?.blockReason;
-        const error = new Error(blockReason
-            ? `O Gemini não gerou resposta (${blockReason}).`
-            : 'A IA não retornou texto.');
+        const error = new Error('A IA não retornou texto.');
         error.code = 'EMPTY_RESPONSE';
         throw error;
     }
 
     return {
         text,
-        model: DEFAULT_MODEL,
-        provider: 'gemini'
+        model: data.model || DEFAULT_MODEL,
+        provider: 'gemini',
+        interactionId: data.id || null
     };
 }
