@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Futuro J.A.R.V.I.S.</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./Style.css">
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <div id="container"></div>
+
+    <header class="jarvis-header">
+        <div>
+            <span class="eyebrow">PROJETO TIPO JARVIS</span>
+            <h1>J.A.R.V.I.S.</h1>
+        </div>
+        <div class="status-pill" aria-live="polite">
+            <span id="statusDot" class="status-dot" data-state="idle"></span>
+            <span id="statusText">Jarvis em espera</span>
+        </div>
+    </header>
+
+    <main class="interface-layer">
+        <section class="hint-card">
+            <span>COMANDO DE VOZ</span>
+            <strong>Diga “Jarvis” e depois o comando</strong>
+            <small>Ex.: “Jarvis, que horas são?”</small>
+        </section>
+    </main>
+
+    <div class="input-container">
+        <div class="input-wrapper">
+            <button id="micBtn" class="mic-button" type="button" aria-label="Ativar ou desativar microfone" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"></path>
+                    <path d="M19 11a7 7 0 0 1-14 0"></path>
+                    <path d="M12 18v3"></path>
+                    <path d="M8 21h8"></path>
+                </svg>
+            </button>
+
+            <input type="text" id="morphText" placeholder="Digite algo ou use o microfone..." maxlength="28" autocomplete="off">
+
+            <button id="typeBtn" type="button">
+                <span class="button-content">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <span>Criar</span>
+                </span>
+            </button>
+        </div>
+    </div>
+
+    <script src="./js.js"></script>
+</body>
+</html>
