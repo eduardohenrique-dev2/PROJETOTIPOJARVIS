@@ -31,6 +31,8 @@
             <div class="status-pill" aria-live="polite">
                 <span id="statusDot" class="status-dot" data-state="idle"></span>
                 <span id="statusText">Jarvis em espera</span>
+                <span aria-hidden="true" style="opacity:.28">•</span>
+                <span id="agentStatusText" title="Status do computador conectado">PC verificando...</span>
             </div>
         </header>
 
@@ -44,11 +46,11 @@
                     <span>ASSISTENTE IA</span>
                     <small id="aiMode">Gemini + voz + ações</small>
                 </div>
-                <p id="responseText">Núcleo online. Diga “Jarvis” ou digite um comando.</p>
+                <p id="responseText">Núcleo online. Diga “Jarvis” ou converse naturalmente.</p>
                 <div class="quick-row">
-                    <button class="quick-command" type="button" data-command="abra o YouTube">YouTube</button>
-                    <button class="quick-command" type="button" data-command="abra a calculadora">Calculadora</button>
-                    <button class="quick-command" type="button" data-command="abra o VS Code">VS Code</button>
+                    <button class="quick-command" type="button" data-command="quero ver uns vídeos">Vídeos</button>
+                    <button class="quick-command" type="button" data-command="quero começar a programar">Programar</button>
+                    <button class="quick-command" type="button" data-command="quero ver meus arquivos">Arquivos</button>
                     <button class="quick-command" type="button" data-command="que horas são">Hora</button>
                     <button class="quick-command" type="button" data-command="quem é você">Identidade</button>
                 </div>
@@ -64,7 +66,7 @@
                     </svg>
                 </button>
 
-                <input type="text" id="morphText" placeholder="Pergunte ou peça uma ação ao Jarvis..." maxlength="500" autocomplete="off">
+                <input type="text" id="morphText" placeholder="Converse naturalmente com o Jarvis..." maxlength="500" autocomplete="off">
 
                 <button id="typeBtn" type="button" aria-label="Enviar comando">
                     <span class="button-content">
