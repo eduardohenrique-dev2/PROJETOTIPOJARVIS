@@ -17,122 +17,18 @@ const JARVIS_APP_LABELS = {
     taskmanager: 'Gerenciador de Tarefas'
 };
 
-const originalProcessCommand = window.processCommand;
-
-window.processCommand = async function enhancedProcessCommand(command, fromVoice = false) {
-    const action = parseJarvisAction(command);
-
-    if (!action) {
-        return originalProcessCommand(command, fromVoice);
-    }
-
-    return executeJarvisAction(action, fromVoice);
-};
-
-function normalizeActionText(text) {
-    return text
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/^\s*jarvis[\s,.:;!?-]*/i, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+function getActionLabel(action) {
+    if (action?.type === 'app') return JARVIS_APP_LABELS[action.target] || action.target;
+    return JARVIS_WEB_TARGETS[action?.target]?.label || action?.target || 'destino';
 }
 
-function parseJarvisAction(rawCommand) {
-    const normalized = normalizeActionText(rawCommand);
-    if (!normalized) return null;
-
-    const youtubeSearch = normalized.match(/^(?:abra\s+(?:o\s+)?youtube\s+e\s+)?(?:pesquise|pesquisar|procure|procurar|busque|buscar)(?:\s+(?:por|no|na))?\s+(.+?)\s+(?:no|na)\s+youtube$/)
-        || normalized.match(/^(?:pesquise|pesquisar|procure|procurar|busque|buscar)\s+(?:no|na)\s+youtube\s+(?:por\s+)?(.+)$/)
-        || normalized.match(/^abra\s+(?:o\s+)?youtube\s+e\s+(?:pesquise|procure|busque)(?:\s+por)?\s+(.+)$/);
-
-    if (youtubeSearch?.[1]) {
-        return {
-            type: 'web-search',
-            target: 'youtube',
-            query: youtubeSearch[1].trim(),
-            label: 'YouTube'
-        };
+window.executeJarvisAction = async function executeJarvisAction(action) {
+    if (!action || typeof action !== 'object') {
+        return { ok: false, message: 'Não recebi uma ação válida para executar.' };
     }
 
-    const googleSearch = normalized.match(/^(?:pesquise|pesquisar|procure|procurar|busque|buscar)\s+(?:por\s+)?(.+?)\s+(?:no google|na internet)$/)
-        || normalized.match(/^(?:pesquise|pesquisar|procure|procurar|busque|buscar)\s+(?:no google|na internet)\s+(?:por\s+)?(.+)$/)
-        || normalized.match(/^(?:pesquise|pesquisar|procure|procurar|busque|buscar)(?:\s+por)?\s+(.+)$/);
-
-    if (googleSearch?.[1]) {
-        return {
-            type: 'web-search',
-            target: 'google',
-            query: googleSearch[1].trim(),
-            label: 'Google'
-        };
-    }
-
-    const openPrefix = /^(?:abra|abrir|abre|inicie|iniciar|execute|executar)\s+(?:o|a|os|as)?\s*/;
-    if (!openPrefix.test(normalized)) return null;
-
-    const targetText = normalized.replace(openPrefix, '').trim();
-
-    const webAliases = [
-        ['youtube', ['youtube']],
-        ['google', ['google', 'navegador google']],
-        ['github', ['github', 'git hub']],
-        ['gmail', ['gmail', 'email', 'e-mail']],
-        ['whatsapp', ['whatsapp', 'whatsapp web']],
-        ['spotify', ['spotify']],
-        ['maps', ['maps', 'google maps', 'mapas']]
-    ];
-
-    for (const [target, aliases] of webAliases) {
-        if (aliases.some((alias) => targetText === alias || targetText.startsWith(`${alias} `))) {
-            return {
-                type: 'website',
-                target,
-                label: JARVIS_WEB_TARGETS[target].label
-            };
-        }
-    }
-
-    const appAliases = [
-        ['calculator', ['calculadora', 'calc']],
-        ['notepad', ['bloco de notas', 'notepad']],
-        ['explorer', ['explorador de arquivos', 'explorador', 'meus arquivos', 'arquivos']],
-        ['vscode', ['vs code', 'vscode', 'visual studio code']],
-        ['paint', ['paint']],
-        ['taskmanager', ['gerenciador de tarefas', 'task manager']]
-    ];
-
-    for (const [target, aliases] of appAliases) {
-        if (aliases.some((alias) => targetText === alias)) {
-            return {
-                type: 'app',
-                target,
-                label: JARVIS_APP_LABELS[target]
-            };
-        }
-    }
-
-    return null;
-}
-
-async function executeJarvisAction(action, fromVoice) {
-    if (fromVoice && isListening && recognition) {
-        restartAfterSpeech = true;
-        try {
-            recognition.stop();
-        } catch (error) {
-            console.warn(error);
-        }
-    }
-
-    setAssistantState('thinking');
-    morphToText(action.type === 'app' ? 'ABRINDO' : 'ACESSANDO', 2200);
-
-    const pendingMessage = action.type === 'web-search'
-        ? `Pesquisando “${action.query}” no ${action.label}...`
-        : `Abrindo ${action.label}...`;
-    showResponse(pendingMessage, true);
+    const label = getActionLabel(action);
+    morphToText(action.type === 'app' ? 'ABRINDO' : action.type === 'web-search' ? 'BUSCANDO' : 'ACESSANDO');
 
     try {
         const response = await fetch('/api/action', {
@@ -149,47 +45,45 @@ async function executeJarvisAction(action, fromVoice) {
 
         if (!response.ok) {
             if ((response.status === 404 || response.status === 405) && action.type !== 'app') {
-                return openWebActionInBrowser(action, fromVoice);
+                return openWebActionInBrowser(action);
             }
 
             throw new Error(data.error || `Não consegui executar a ação (${response.status}).`);
         }
 
-        const message = data.message || `${action.label} aberto.`;
-        showResponse(message);
-        morphToText('PRONTO', 1700);
-        speak(message, fromVoice);
+        morphToText('PRONTO');
+        return {
+            ok: true,
+            message: data.message || `${label} aberto.`
+        };
     } catch (error) {
         console.error('Falha ao executar ação:', error);
 
         if (action.type !== 'app') {
-            return openWebActionInBrowser(action, fromVoice);
+            return openWebActionInBrowser(action);
         }
 
-        setAssistantState('error');
-        const message = `Não consegui abrir ${action.label}. Para controlar programas, execute o Jarvis localmente com npm start.`;
-        showResponse(message);
-        speak(message, fromVoice);
+        return {
+            ok: false,
+            message: `Entendi o que você quis fazer, mas não consegui abrir ${label} neste computador.`
+        };
     }
-}
+};
 
-function openWebActionInBrowser(action, fromVoice) {
+function openWebActionInBrowser(action) {
     const url = buildWebActionUrl(action);
     if (!url) {
-        const message = 'Não reconheci esse destino.';
-        showResponse(message);
-        speak(message, fromVoice);
-        return;
+        return { ok: false, message: 'Entendi a intenção, mas esse destino ainda não está disponível.' };
     }
 
     const opened = window.open(url, '_blank', 'noopener,noreferrer');
-    const message = opened
-        ? (action.type === 'web-search' ? `Pesquisa aberta no ${action.label}.` : `${action.label} aberto.`)
-        : `O navegador bloqueou a nova aba. Permita pop-ups para abrir ${action.label}.`;
+    const label = getActionLabel(action);
 
-    showResponse(message);
-    morphToText(opened ? 'PRONTO' : 'ATENCAO', 1700);
-    speak(message, fromVoice);
+    morphToText(opened ? 'PRONTO' : 'ATENCAO');
+
+    return opened
+        ? { ok: true, message: action.type === 'web-search' ? `Pesquisa aberta no ${label}.` : `${label} aberto.` }
+        : { ok: false, message: `O navegador bloqueou a nova aba. Permita pop-ups para eu abrir ${label}.` };
 }
 
 function buildWebActionUrl(action) {
@@ -205,7 +99,9 @@ function buildWebActionUrl(action) {
             return `https://www.youtube.com/results?search_query=${query}`;
         }
 
-        return `https://www.google.com/search?q=${query}`;
+        if (action.target === 'google') {
+            return `https://www.google.com/search?q=${query}`;
+        }
     }
 
     return null;
