@@ -24,16 +24,13 @@ function sanitizeMessages(messages) {
         .slice(-12);
 }
 
-function toInteractionSteps(messages) {
-    return messages.map((message) => ({
-        type: message.role === 'assistant' ? 'model_output' : 'user_input',
-        content: [
-            {
-                type: 'text',
-                text: message.content
-            }
-        ]
-    }));
+function buildConversationInput(messages) {
+    const lines = messages.map((message) => {
+        const speaker = message.role === 'assistant' ? 'JARVIS' : 'Usuário';
+        return `${speaker}: ${message.content}`;
+    });
+
+    return `Conversa recente:\n${lines.join('\n')}\n\nResponda à última mensagem do Usuário levando em conta o contexto acima.`;
 }
 
 function extractOutputText(data) {
@@ -98,7 +95,7 @@ export async function createJarvisReply(messages) {
         body: JSON.stringify({
             model: DEFAULT_MODEL,
             system_instruction: JARVIS_INSTRUCTIONS,
-            input: toInteractionSteps(cleanMessages),
+            input: buildConversationInput(cleanMessages),
             store: false,
             generation_config: {
                 max_output_tokens: 640,
