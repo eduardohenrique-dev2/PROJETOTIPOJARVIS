@@ -56,7 +56,10 @@ function parseJarvisAction(rawCommand) {
         };
     }
 
-    const googleSearch = normalized.match(/^(?:pesquise|pesquisar|procure|procurar|busque|buscar)(?:\s+(?:por|no google|na internet))?\s+(.+)$/);
+    const googleSearch = normalized.match(/^(?:pesquise|pesquisar|procure|procurar|busque|buscar)\s+(?:por\s+)?(.+?)\s+(?:no google|na internet)$/)
+        || normalized.match(/^(?:pesquise|pesquisar|procure|procurar|busque|buscar)\s+(?:no google|na internet)\s+(?:por\s+)?(.+)$/)
+        || normalized.match(/^(?:pesquise|pesquisar|procure|procurar|busque|buscar)(?:\s+por)?\s+(.+)$/);
+
     if (googleSearch?.[1]) {
         return {
             type: 'web-search',
