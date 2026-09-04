@@ -1,12 +1,13 @@
 {
   "name": "projetotipojarvis",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
-  "description": "Interface experimental de assistente J.A.R.V.I.S. com voz, particulas 3D e IA.",
+  "description": "Assistente J.A.R.V.I.S. com interface 3D, voz, IA e controle local/remoto seguro.",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "agent": "node agent.js"
   },
   "engines": {
     "node": ">=20"
