@@ -1,25 +1,26 @@
 import http from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createJarvisReply } from './ai-core.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PORT = Number(process.env.PORT || 3000);
 
 await loadEnv();
+const PORT = Number(process.env.PORT || 3000);
+
+const publicFiles = new Map([
+    ['/', 'index.html'],
+    ['/index.html', 'index.html'],
+    ['/Style.css', 'Style.css'],
+    ['/js.js', 'js.js']
+]);
 
 const mimeTypes = {
     '.html': 'text/html; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
-    '.js': 'text/javascript; charset=utf-8',
-    '.json': 'application/json; charset=utf-8',
-    '.svg': 'image/svg+xml',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.ico': 'image/x-icon'
+    '.js': 'text/javascript; charset=utf-8'
 };
 
 const server = http.createServer(async (req, res) => {
@@ -34,27 +35,21 @@ const server = http.createServer(async (req, res) => {
             return json(res, 405, { error: 'Método não permitido.' });
         }
 
-        let requestedPath = decodeURIComponent(url.pathname);
-        if (requestedPath === '/') requestedPath = '/index.html';
-
-        const safePath = path.normalize(requestedPath).replace(/^(\.\.(\/|\\|$))+/, '');
-        const filePath = path.join(__dirname, safePath);
-
-        if (!filePath.startsWith(__dirname)) {
-            return json(res, 403, { error: 'Acesso negado.' });
-        }
-
-        const info = await stat(filePath).catch(() => null);
-        if (!info || !info.isFile()) {
+        const publicFile = publicFiles.get(url.pathname);
+        if (!publicFile) {
             return json(res, 404, { error: 'Arquivo não encontrado.' });
         }
 
+        const filePath = path.join(__dirname, publicFile);
         const ext = path.extname(filePath).toLowerCase();
         const content = await readFile(filePath);
+
         res.writeHead(200, {
             'Content-Type': mimeTypes[ext] || 'application/octet-stream',
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache',
+            'X-Content-Type-Options': 'nosniff'
         });
+
         if (req.method === 'HEAD') return res.end();
         res.end(content);
     } catch (error) {
@@ -94,7 +89,9 @@ function readJsonBody(req) {
         req.on('data', (chunk) => {
             body += chunk;
             if (body.length > 1_000_000) {
-                reject(new Error('Corpo da requisição muito grande.'));
+                const error = new Error('Corpo da requisição muito grande.');
+                error.code = 'INVALID_INPUT';
+                reject(error);
                 req.destroy();
             }
         });
@@ -114,7 +111,10 @@ function readJsonBody(req) {
 }
 
 function json(res, status, payload) {
-    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.writeHead(status, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'X-Content-Type-Options': 'nosniff'
+    });
     res.end(JSON.stringify(payload));
 }
 
