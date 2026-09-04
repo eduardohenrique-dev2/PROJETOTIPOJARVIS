@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Futuro J.A.R.V.I.S.</title>
+    <meta name="theme-color" content="#02050b">
+    <title>J.A.R.V.I.S. — Assistente IA</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -26,10 +27,13 @@
     </header>
 
     <main class="interface-layer">
-        <section class="hint-card">
-            <span>COMANDO DE VOZ</span>
-            <strong>Diga “Jarvis” e depois o comando</strong>
-            <small>Ex.: “Jarvis, que horas são?”</small>
+        <section class="conversation-card" aria-live="polite">
+            <div class="conversation-header">
+                <span>ASSISTENTE IA</span>
+                <small id="aiMode">voz + texto</small>
+            </div>
+            <p id="responseText">Ative o microfone e diga “Jarvis”, ou digite uma pergunta abaixo.</p>
+            <div class="conversation-hint">Ex.: “Jarvis, me explique o que é um CLP.”</div>
         </section>
     </main>
 
@@ -44,14 +48,14 @@
                 </svg>
             </button>
 
-            <input type="text" id="morphText" placeholder="Digite algo ou use o microfone..." maxlength="28" autocomplete="off">
+            <input type="text" id="morphText" placeholder="Pergunte alguma coisa ao Jarvis..." maxlength="500" autocomplete="off">
 
-            <button id="typeBtn" type="button">
+            <button id="typeBtn" type="button" aria-label="Enviar pergunta">
                 <span class="button-content">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
-                    <span>Criar</span>
+                    <span>Enviar</span>
                 </span>
             </button>
         </div>
