@@ -113,7 +113,6 @@ function setupSpeechRecognition() {
             return;
         }
 
-        // Durante processamento/fala, o reinício acontece quando a resposta terminar.
         if (restartAfterSpeech || assistantState === 'thinking' || assistantState === 'speaking' || window.speechSynthesis?.speaking) {
             return;
         }
@@ -132,7 +131,6 @@ function setupSpeechRecognition() {
             return;
         }
 
-        // Chrome encerra sessões por silêncio/no-speech. Mantemos o modo voz ativo e religamos.
         if (event.error === 'no-speech' || event.error === 'aborted' || event.error === 'network') {
             if (voiceModeEnabled && assistantState !== 'thinking' && assistantState !== 'speaking') {
                 scheduleRecognitionRestart(event.error === 'network' ? 450 : 120);
@@ -222,8 +220,6 @@ function startListening() {
     try {
         recognition.start();
     } catch (error) {
-        // InvalidStateError acontece quando o Chrome ainda está encerrando a sessão anterior.
-        // Em vez de perder o modo voz, tentamos novamente logo em seguida.
         if (voiceModeEnabled) {
             scheduleRecognitionRestart(140);
         } else {
@@ -249,8 +245,6 @@ function handleVoiceTranscript(transcript) {
         morphToText('JARVIS');
 
         if (!command) {
-            // Não falamos "Sim, estou ouvindo" para não desligar/religar o reconhecimento.
-            // O microfone permanece aberto e captura o comando seguinte imediatamente.
             awaitingCommand = true;
             clearTimeout(awaitingCommandTimer);
             awaitingCommandTimer = setTimeout(() => {
@@ -279,32 +273,50 @@ async function processCommand(command, fromVoice = false) {
     const cleanCommand = command.trim();
     if (!cleanCommand) return;
 
+    const resumeVoice = Boolean(fromVoice && voiceModeEnabled);
+
     if (fromVoice && isListening && recognition) {
         restartAfterSpeech = voiceModeEnabled;
         try { recognition.stop(); } catch (error) { console.warn(error); }
     }
 
     setAssistantState('thinking');
-    showResponse(`Processando: “${cleanCommand}”`, true);
+    showResponse(`Pensando sobre: “${cleanCommand}”`, true);
     morphToText('PENSANDO');
 
     const normalized = normalizeText(cleanCommand);
-    const localResponse = getLocalResponse(normalized);
+    const systemResponse = getSystemResponse(normalized);
 
-    if (localResponse) {
-        if (localResponse.action === 'clear') conversationHistory.length = 0;
-        showResponse(localResponse.text);
-        speak(localResponse.text, fromVoice && voiceModeEnabled);
+    if (systemResponse) {
+        if (systemResponse.action === 'clear') conversationHistory.length = 0;
+        showResponse(systemResponse.text);
+        speak(systemResponse.text, resumeVoice && voiceModeEnabled);
         return;
     }
 
     try {
         const result = await askJarvisAI(cleanCommand);
-        showResponse(result.text);
         const aiMode = document.getElementById('aiMode');
         if (aiMode) aiMode.textContent = result.model || 'Gemini online';
-        morphToText('JARVIS');
-        speak(result.text, fromVoice && voiceModeEnabled);
+
+        let responseText = result.text;
+        showResponse(responseText);
+
+        if (result.action && typeof window.executeJarvisAction === 'function') {
+            const actionResult = await window.executeJarvisAction(result.action);
+
+            if (!actionResult?.ok) {
+                responseText = actionResult?.message || 'Entendi o que você queria fazer, mas não consegui executar essa ação.';
+                showResponse(responseText);
+                morphToText('ATENCAO');
+            } else {
+                morphToText('PRONTO');
+            }
+        } else {
+            morphToText('JARVIS');
+        }
+
+        speak(responseText, resumeVoice && voiceModeEnabled);
     } catch (error) {
         console.error(error);
         setAssistantState('error');
@@ -319,33 +331,11 @@ async function processCommand(command, fromVoice = false) {
         }
 
         showResponse(message);
-        speak(message, fromVoice && voiceModeEnabled);
+        speak(message, resumeVoice && voiceModeEnabled);
     }
 }
 
-function getLocalResponse(command) {
-    const now = new Date();
-
-    if (command.includes('que horas') || command === 'horas' || command.includes('hora agora')) {
-        const time = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        return { text: `Agora são ${time}.` };
-    }
-
-    if (command.includes('que dia') || command.includes('data de hoje') || command.includes('qual a data')) {
-        const date = now.toLocaleDateString('pt-BR', {
-            weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
-        });
-        return { text: `Hoje é ${date}.` };
-    }
-
-    if (command.includes('quem e voce') || command.includes('qual seu nome') || command.includes('se apresente')) {
-        return { text: 'Eu sou Jarvis, seu assistente pessoal conectado à inteligência artificial e aos comandos locais deste computador.' };
-    }
-
-    if (command.includes('bom dia')) return { text: 'Bom dia. Sistemas online e prontos para trabalhar.' };
-    if (command.includes('boa tarde')) return { text: 'Boa tarde. Estou à disposição.' };
-    if (command.includes('boa noite')) return { text: 'Boa noite. Estou à disposição.' };
-
+function getSystemResponse(command) {
     if (command.includes('limpar conversa') || command.includes('esquecer conversa') || command.includes('zerar memoria')) {
         return { text: 'Certo. Limpei o contexto desta conversa.', action: 'clear' };
     }
