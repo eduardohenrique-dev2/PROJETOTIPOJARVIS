@@ -17,7 +17,8 @@ const publicFiles = new Map([
     ['/index.html', 'index.html'],
     ['/Style.css', 'Style.css'],
     ['/js.js', 'js.js'],
-    ['/actions.js', 'actions.js']
+    ['/actions.js', 'actions.js'],
+    ['/blackhole-ui.js', 'blackhole-ui.js']
 ]);
 
 const mimeTypes = {
