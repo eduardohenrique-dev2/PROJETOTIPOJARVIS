@@ -1,12 +1,15 @@
 let assistantState = 'idle';
 let recognition = null;
 let isListening = false;
+let voiceModeEnabled = false;
 let restartAfterSpeech = false;
+let recognitionRestartTimer = null;
 let awaitingCommand = false;
 let awaitingCommandTimer = null;
 let activeRequest = null;
 
 const conversationHistory = [];
+const RECOGNITION_RESTART_DELAY = 90;
 
 const stateConfig = {
     idle: 'Jarvis em espera',
@@ -55,8 +58,8 @@ function setAssistantState(state) {
     if (statusText) statusText.textContent = stateConfig[state] || stateConfig.idle;
     if (statusDot) statusDot.dataset.state = state;
     if (micBtn) {
-        micBtn.classList.toggle('active', state === 'listening');
-        micBtn.setAttribute('aria-pressed', state === 'listening' ? 'true' : 'false');
+        micBtn.classList.toggle('active', voiceModeEnabled);
+        micBtn.setAttribute('aria-pressed', voiceModeEnabled ? 'true' : 'false');
     }
     if (typeBtn) typeBtn.disabled = state === 'thinking';
 }
@@ -97,31 +100,59 @@ function setupSpeechRecognition() {
 
     recognition.onstart = () => {
         isListening = true;
-        setAssistantState('listening');
+        if (voiceModeEnabled && assistantState !== 'thinking' && assistantState !== 'speaking') {
+            setAssistantState('listening');
+        }
     };
 
     recognition.onend = () => {
         isListening = false;
-        if (restartAfterSpeech || assistantState === 'thinking' || assistantState === 'speaking') return;
-        if (assistantState === 'listening') setAssistantState('idle');
+
+        if (!voiceModeEnabled) {
+            if (assistantState === 'listening') setAssistantState('idle');
+            return;
+        }
+
+        // Durante processamento/fala, o reinício acontece quando a resposta terminar.
+        if (restartAfterSpeech || assistantState === 'thinking' || assistantState === 'speaking' || window.speechSynthesis?.speaking) {
+            return;
+        }
+
+        scheduleRecognitionRestart(RECOGNITION_RESTART_DELAY);
     };
 
     recognition.onerror = (event) => {
-        if (event.error === 'no-speech' || event.error === 'aborted') return;
         isListening = false;
 
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            voiceModeEnabled = false;
+            clearRecognitionRestart();
             setAssistantState('error');
             showResponse('Permita o acesso ao microfone no navegador para usar comandos de voz.');
-        } else if (!restartAfterSpeech) {
+            return;
+        }
+
+        // Chrome encerra sessões por silêncio/no-speech. Mantemos o modo voz ativo e religamos.
+        if (event.error === 'no-speech' || event.error === 'aborted' || event.error === 'network') {
+            if (voiceModeEnabled && assistantState !== 'thinking' && assistantState !== 'speaking') {
+                scheduleRecognitionRestart(event.error === 'network' ? 450 : 120);
+            }
+            return;
+        }
+
+        if (voiceModeEnabled) {
+            scheduleRecognitionRestart(250);
+        } else {
             setAssistantState('idle');
         }
     };
 
     recognition.onresult = (event) => {
         let interimText = '';
+
         for (let i = event.resultIndex; i < event.results.length; i++) {
             const transcript = event.results[i][0].transcript.trim();
+
             if (event.results[i].isFinal) {
                 const input = document.getElementById('morphText');
                 if (input) input.value = '';
@@ -130,6 +161,7 @@ function setupSpeechRecognition() {
                 interimText += transcript;
             }
         }
+
         if (interimText) {
             const input = document.getElementById('morphText');
             if (input) input.value = interimText;
@@ -140,26 +172,63 @@ function setupSpeechRecognition() {
 function toggleListening() {
     if (!recognition) return;
 
-    if (assistantState === 'speaking') window.speechSynthesis?.cancel();
-
-    if (isListening) {
+    if (voiceModeEnabled) {
+        voiceModeEnabled = false;
         restartAfterSpeech = false;
-        recognition.stop();
+        awaitingCommand = false;
+        clearTimeout(awaitingCommandTimer);
+        clearRecognitionRestart();
+
+        if (window.speechSynthesis?.speaking) window.speechSynthesis.cancel();
+
+        if (isListening) {
+            try { recognition.abort(); } catch (error) { console.warn(error); }
+        }
+
         setAssistantState('idle');
         showResponse('Microfone pausado. Clique nele para voltar a ouvir.');
         return;
     }
 
+    voiceModeEnabled = true;
     restartAfterSpeech = false;
+    setAssistantState('listening');
     startListening();
 }
 
+function clearRecognitionRestart() {
+    clearTimeout(recognitionRestartTimer);
+    recognitionRestartTimer = null;
+}
+
+function scheduleRecognitionRestart(delay = RECOGNITION_RESTART_DELAY) {
+    if (!voiceModeEnabled || !recognition) return;
+
+    clearRecognitionRestart();
+    recognitionRestartTimer = setTimeout(() => {
+        recognitionRestartTimer = null;
+
+        if (!voiceModeEnabled || assistantState === 'thinking' || assistantState === 'speaking' || window.speechSynthesis?.speaking) {
+            return;
+        }
+
+        startListening();
+    }, delay);
+}
+
 function startListening() {
-    if (!recognition || isListening) return;
+    if (!recognition || !voiceModeEnabled || isListening) return;
+
     try {
         recognition.start();
     } catch (error) {
-        console.warn('Reconhecimento já iniciado:', error);
+        // InvalidStateError acontece quando o Chrome ainda está encerrando a sessão anterior.
+        // Em vez de perder o modo voz, tentamos novamente logo em seguida.
+        if (voiceModeEnabled) {
+            scheduleRecognitionRestart(140);
+        } else {
+            console.warn('Não foi possível iniciar o reconhecimento:', error);
+        }
     }
 }
 
@@ -180,10 +249,16 @@ function handleVoiceTranscript(transcript) {
         morphToText('JARVIS');
 
         if (!command) {
+            // Não falamos "Sim, estou ouvindo" para não desligar/religar o reconhecimento.
+            // O microfone permanece aberto e captura o comando seguinte imediatamente.
             awaitingCommand = true;
             clearTimeout(awaitingCommandTimer);
-            awaitingCommandTimer = setTimeout(() => { awaitingCommand = false; }, 9000);
-            speak('Sim, estou ouvindo.', true);
+            awaitingCommandTimer = setTimeout(() => {
+                awaitingCommand = false;
+                if (voiceModeEnabled && !isListening) scheduleRecognitionRestart(80);
+            }, 6500);
+            setAssistantState('listening');
+            showResponse('Sim. Estou ouvindo...');
             return;
         }
 
@@ -205,7 +280,7 @@ async function processCommand(command, fromVoice = false) {
     if (!cleanCommand) return;
 
     if (fromVoice && isListening && recognition) {
-        restartAfterSpeech = true;
+        restartAfterSpeech = voiceModeEnabled;
         try { recognition.stop(); } catch (error) { console.warn(error); }
     }
 
@@ -219,7 +294,7 @@ async function processCommand(command, fromVoice = false) {
     if (localResponse) {
         if (localResponse.action === 'clear') conversationHistory.length = 0;
         showResponse(localResponse.text);
-        speak(localResponse.text, fromVoice);
+        speak(localResponse.text, fromVoice && voiceModeEnabled);
         return;
     }
 
@@ -229,7 +304,7 @@ async function processCommand(command, fromVoice = false) {
         const aiMode = document.getElementById('aiMode');
         if (aiMode) aiMode.textContent = result.model || 'Gemini online';
         morphToText('JARVIS');
-        speak(result.text, fromVoice);
+        speak(result.text, fromVoice && voiceModeEnabled);
     } catch (error) {
         console.error(error);
         setAssistantState('error');
@@ -244,7 +319,7 @@ async function processCommand(command, fromVoice = false) {
         }
 
         showResponse(message);
-        speak(message, fromVoice);
+        speak(message, fromVoice && voiceModeEnabled);
     }
 }
 
@@ -276,7 +351,9 @@ function getLocalResponse(command) {
     }
 
     if (command.includes('parar de ouvir') || command.includes('desligar microfone')) {
+        voiceModeEnabled = false;
         restartAfterSpeech = false;
+        clearRecognitionRestart();
         return { text: 'Certo. Vou desligar o microfone.' };
     }
 
@@ -320,14 +397,22 @@ async function askJarvisAI(message) {
 }
 
 function speak(text, resumeListening = false) {
+    const shouldResume = Boolean(resumeListening && voiceModeEnabled);
+
     if (!('speechSynthesis' in window)) {
         restartAfterSpeech = false;
-        setAssistantState(resumeListening ? 'listening' : 'idle');
-        if (resumeListening) setTimeout(startListening, 250);
+        if (shouldResume) {
+            setAssistantState('listening');
+            scheduleRecognitionRestart(60);
+        } else {
+            setAssistantState('idle');
+        }
         return;
     }
 
-    restartAfterSpeech = resumeListening;
+    restartAfterSpeech = shouldResume;
+    clearRecognitionRestart();
+
     if (isListening && recognition) {
         try { recognition.stop(); } catch (error) { console.warn(error); }
     }
@@ -335,7 +420,7 @@ function speak(text, resumeListening = false) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'pt-BR';
-    utterance.rate = 1.02;
+    utterance.rate = 1.08;
     utterance.pitch = 0.92;
 
     utterance.onstart = () => setAssistantState('speaking');
@@ -343,11 +428,12 @@ function speak(text, resumeListening = false) {
     utterance.onerror = finishSpeech;
 
     function finishSpeech() {
-        const shouldRestart = restartAfterSpeech;
+        const resume = restartAfterSpeech && voiceModeEnabled;
         restartAfterSpeech = false;
-        if (shouldRestart) {
+
+        if (resume) {
             setAssistantState('listening');
-            setTimeout(startListening, 250);
+            scheduleRecognitionRestart(60);
         } else {
             setAssistantState('idle');
         }
