@@ -1,7 +1,11 @@
 const configuredModel = (process.env.GEMINI_MODEL || '').trim();
-const DEFAULT_MODEL = !configuredModel || configuredModel === 'gemini-2.5-flash'
+const LEGACY_MODELS = new Set(['gemini-2.5-flash', 'models/gemini-2.5-flash']);
+export const JARVIS_MODEL = !configuredModel || LEGACY_MODELS.has(configuredModel)
     ? 'gemini-3.6-flash'
-    : configuredModel;
+    : configuredModel.replace(/^models\//, '');
+
+const FALLBACK_MODEL = 'gemini-3.5-flash-lite';
+const INTERACTIONS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1/interactions';
 
 const JARVIS_INSTRUCTIONS = `Você é J.A.R.V.I.S., um assistente pessoal futurista em desenvolvimento.
 Responda sempre em português do Brasil, a menos que o usuário peça outro idioma.
@@ -49,11 +53,11 @@ function extractOutputText(data) {
     return chunks.join('\n').trim();
 }
 
-function normalizeGeminiError(data, status) {
+function normalizeGeminiError(data, status, model) {
     const rawMessage = data?.error?.message || data?.message || `Erro da API Gemini (${status}).`;
 
     if (status === 429) {
-        return 'O limite gratuito do Gemini foi atingido por enquanto. Aguarde um pouco e tente novamente.';
+        return `O limite gratuito do modelo ${model} foi atingido por enquanto. Aguarde um pouco e tente novamente.`;
     }
 
     if (status === 403) {
@@ -64,11 +68,34 @@ function normalizeGeminiError(data, status) {
         return 'A chave Gemini parece inválida. Confira GEMINI_API_KEY no arquivo .env.';
     }
 
-    if (status === 404 && /model/i.test(rawMessage)) {
-        return 'O modelo Gemini configurado não está disponível. Use GEMINI_MODEL=gemini-3.6-flash.';
+    if (status === 404 && /model|not found|available/i.test(rawMessage)) {
+        return `O modelo ${model} não está disponível para esta chave.`;
     }
 
     return rawMessage;
+}
+
+async function requestGemini(apiKey, model, input) {
+    const response = await fetch(INTERACTIONS_ENDPOINT, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+        },
+        body: JSON.stringify({
+            model,
+            system_instruction: JARVIS_INSTRUCTIONS,
+            input,
+            store: false,
+            generation_config: {
+                max_output_tokens: 640,
+                thinking_level: 'low'
+            }
+        })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    return { response, data };
 }
 
 export async function createJarvisReply(messages) {
@@ -86,44 +113,42 @@ export async function createJarvisReply(messages) {
         throw error;
     }
 
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey
-        },
-        body: JSON.stringify({
-            model: DEFAULT_MODEL,
-            system_instruction: JARVIS_INSTRUCTIONS,
-            input: buildConversationInput(cleanMessages),
-            store: false,
-            generation_config: {
-                max_output_tokens: 640,
-                thinking_level: 'low'
+    const input = buildConversationInput(cleanMessages);
+    const modelsToTry = [...new Set([JARVIS_MODEL, FALLBACK_MODEL])];
+    let lastFailure = null;
+
+    for (const model of modelsToTry) {
+        const { response, data } = await requestGemini(apiKey, model, input);
+
+        if (response.ok) {
+            const text = extractOutputText(data);
+            if (!text) {
+                const error = new Error('A IA respondeu, mas não retornou texto.');
+                error.code = 'EMPTY_RESPONSE';
+                throw error;
             }
-        })
-    });
 
-    const data = await response.json().catch(() => ({}));
+            return {
+                text,
+                model: data.model || model,
+                provider: 'gemini',
+                interactionId: data.id || null
+            };
+        }
 
-    if (!response.ok) {
-        const error = new Error(normalizeGeminiError(data, response.status));
-        error.code = response.status === 429 ? 'RATE_LIMIT' : 'GEMINI_ERROR';
-        error.status = response.status;
-        throw error;
+        lastFailure = { response, data, model };
+
+        // Em caso de modelo indisponível ou cota temporária, tenta o Flash-Lite.
+        if (![404, 429].includes(response.status) || model === FALLBACK_MODEL) {
+            break;
+        }
     }
 
-    const text = extractOutputText(data);
-    if (!text) {
-        const error = new Error('A IA não retornou texto.');
-        error.code = 'EMPTY_RESPONSE';
-        throw error;
-    }
-
-    return {
-        text,
-        model: data.model || DEFAULT_MODEL,
-        provider: 'gemini',
-        interactionId: data.id || null
-    };
+    const status = lastFailure?.response?.status || 500;
+    const model = lastFailure?.model || JARVIS_MODEL;
+    const data = lastFailure?.data || {};
+    const error = new Error(normalizeGeminiError(data, status, model));
+    error.code = status === 429 ? 'RATE_LIMIT' : 'GEMINI_ERROR';
+    error.status = status;
+    throw error;
 }
