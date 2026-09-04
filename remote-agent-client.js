@@ -1,6 +1,12 @@
 import { createAgentAuthHeaders } from './agent-protocol.js';
 
 const REQUEST_TIMEOUT_MS = 5_000;
+const FORBIDDEN_SECRETS = new Set([
+    'troque_por_um_segredo_forte_e_unico',
+    'sua_chave_aqui',
+    'changeme',
+    'change-me'
+]);
 
 export async function getRemoteAgentStatus() {
     const config = getAgentConfig();
@@ -54,6 +60,14 @@ function getAgentConfig() {
             ok: false,
             code: 'AGENT_NOT_CONFIGURED',
             message: 'O acesso remoto ao computador ainda não foi configurado.'
+        };
+    }
+
+    if (secret.length < 24 || FORBIDDEN_SECRETS.has(secret.toLowerCase())) {
+        return {
+            ok: false,
+            code: 'INSECURE_AGENT_SECRET',
+            message: 'O segredo do Jarvis Agent está inseguro ou ainda usa o valor de exemplo.'
         };
     }
 
