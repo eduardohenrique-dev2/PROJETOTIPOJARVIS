@@ -60,7 +60,8 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
     console.log(`JARVIS online em http://localhost:${PORT}`);
-    console.log(process.env.OPENAI_API_KEY ? 'IA: configurada' : 'IA: falta OPENAI_API_KEY no arquivo .env');
+    const configured = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+    console.log(configured ? 'IA Gemini: configurada' : 'IA Gemini: falta GEMINI_API_KEY no arquivo .env');
 });
 
 async function handleChat(req, res) {
@@ -74,7 +75,12 @@ async function handleChat(req, res) {
         const result = await createJarvisReply(body.messages);
         return json(res, 200, result);
     } catch (error) {
-        const status = error.code === 'INVALID_INPUT' ? 400 : error.code === 'MISSING_API_KEY' ? 503 : 500;
+        const status = error.code === 'INVALID_INPUT'
+            ? 400
+            : error.code === 'MISSING_API_KEY'
+                ? 503
+                : error.status || 500;
+
         return json(res, status, {
             error: error.message || 'Falha ao consultar a IA.',
             code: error.code || 'UNKNOWN_ERROR'
