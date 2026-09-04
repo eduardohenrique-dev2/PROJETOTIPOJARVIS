@@ -15,10 +15,10 @@ const HOST = '127.0.0.1';
 const publicFiles = new Map([
     ['/', 'index.html'],
     ['/index.html', 'index.html'],
-    ['/Style.css', 'Style.css'],
-    ['/js.js', 'js.js'],
-    ['/actions.js', 'actions.js'],
-    ['/blackhole-ui.js', 'blackhole-ui.js']
+    ['/style.css', 'style.css'],
+    ['/script.js', 'script.js'],
+    ['/assistant-core.js', 'assistant-core.js'],
+    ['/actions.js', 'actions.js']
 ]);
 
 const mimeTypes = {
