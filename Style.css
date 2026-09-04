@@ -142,43 +142,61 @@ input {
     pointer-events: none;
 }
 
-.hint-card {
+.conversation-card {
     position: absolute;
     left: 50%;
     bottom: 7.4rem;
     transform: translateX(-50%);
-    width: min(90vw, 440px);
-    padding: 0.85rem 1rem;
-    text-align: center;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    background: rgba(3, 7, 15, 0.42);
-    backdrop-filter: blur(12px);
-    color: rgba(255, 255, 255, 0.62);
+    width: min(90vw, 560px);
+    min-height: 106px;
+    padding: 1rem 1.1rem;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(4, 10, 21, 0.68), rgba(2, 6, 14, 0.48));
+    backdrop-filter: blur(16px);
+    box-shadow: 0 15px 45px rgba(0, 0, 0, 0.3);
 }
 
-.hint-card span {
-    display: block;
-    margin-bottom: 0.35rem;
+.conversation-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.58rem;
+}
+
+.conversation-header span {
     font-size: 0.62rem;
     font-weight: 700;
     letter-spacing: 0.2em;
-    color: rgba(103, 223, 255, 0.72);
+    color: rgba(103, 223, 255, 0.8);
 }
 
-.hint-card strong,
-.hint-card small {
-    display: block;
+.conversation-header small {
+    padding: 0.25rem 0.48rem;
+    border: 1px solid rgba(128, 233, 255, 0.1);
+    border-radius: 999px;
+    color: rgba(255, 255, 255, 0.46);
+    font-size: 0.61rem;
+    letter-spacing: 0.06em;
 }
 
-.hint-card strong {
-    font-size: 0.88rem;
-    color: rgba(255, 255, 255, 0.86);
+#responseText {
+    max-height: 82px;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.86rem;
+    line-height: 1.45;
 }
 
-.hint-card small {
-    margin-top: 0.25rem;
-    font-size: 0.72rem;
+#responseText.thinking {
+    color: rgba(196, 168, 255, 0.82);
+}
+
+.conversation-hint {
+    margin-top: 0.55rem;
+    color: rgba(255, 255, 255, 0.36);
+    font-size: 0.68rem;
 }
 
 .input-container {
@@ -312,8 +330,19 @@ button:hover .button-content svg {
         font-size: 0.66rem;
     }
 
-    .hint-card {
+    .conversation-card {
         bottom: 6.8rem;
+        min-height: 96px;
+        padding: 0.85rem;
+    }
+
+    #responseText {
+        max-height: 72px;
+        font-size: 0.78rem;
+    }
+
+    .conversation-hint {
+        display: none;
     }
 
     .input-container {
