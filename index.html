@@ -3,179 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#02050b">
-    <title>J.A.R.V.I.S. — Assistente IA</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./Style.css">
+    <meta name="theme-color" content="#08000d">
+    <title>J.A.R.V.I.S. — Black Hole Core</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+      }
+    }
+    </script>
 </head>
-<body data-jarvis-state="idle">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
-    <div id="container" aria-hidden="true"></div>
-    <div class="cosmic-vignette" aria-hidden="true"></div>
-    <div class="scanlines" aria-hidden="true"></div>
-
-    <header class="jarvis-header">
-        <div class="brand-lockup">
-            <span class="brand-kicker">NEURAL OPERATING SYSTEM</span>
-            <div class="brand-row">
-                <h1>J.A.R.V.I.S.</h1>
-                <span class="version-chip">V1.3</span>
-            </div>
-            <span class="brand-subtitle">LOCAL INTELLIGENCE · GEMINI CORE · WINDOWS LINK</span>
-        </div>
-
-        <div class="header-center" aria-hidden="true">
-            <span class="header-line"></span>
-            <span>GRAVITY CORE INTERFACE</span>
-            <span class="header-line"></span>
-        </div>
-
-        <div class="status-pill" aria-live="polite">
-            <span id="statusDot" class="status-dot" data-state="idle"></span>
-            <div>
-                <small>SYSTEM STATUS</small>
-                <span id="statusText">Jarvis em espera</span>
-            </div>
-        </div>
-    </header>
-
-    <main class="interface-layer">
-        <aside class="hud-panel hud-left">
-            <div class="hud-panel-header">
-                <span>CORE TELEMETRY</span>
-                <span class="hud-index">01</span>
-            </div>
-
-            <div class="telemetry-row">
-                <span>HORÁRIO LOCAL</span>
-                <strong id="hudClock">--:--:--</strong>
-            </div>
-            <div class="telemetry-row">
-                <span>ESTADO</span>
-                <strong id="hudState">Jarvis em espera</strong>
-            </div>
-            <div class="telemetry-row">
-                <span>MODELO IA</span>
-                <strong id="hudAi">voz + texto</strong>
-            </div>
-            <div class="telemetry-row">
-                <span>LOCAL BRIDGE</span>
-                <strong>WINDOWS READY</strong>
-            </div>
-
-            <div class="signal-graph" aria-hidden="true">
-                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-            </div>
-
-            <div class="hud-note">
-                <span class="hud-note-dot"></span>
-                Comandos locais protegidos por lista permitida.
-            </div>
-        </aside>
-
-        <section class="core-target" aria-hidden="true">
-            <div class="reticle reticle-outer"></div>
-            <div class="reticle reticle-mid"></div>
-            <div class="reticle reticle-inner"></div>
-            <div class="axis axis-x"></div>
-            <div class="axis axis-y"></div>
-            <div class="core-label core-label-top">SINGULARITY VISUAL CORE</div>
-            <div class="core-label core-label-bottom">
-                <span id="coreReadout">CORE STABLE</span>
-                <b>●</b>
-                <span>LINK 100%</span>
-            </div>
-        </section>
-
-        <aside class="hud-panel hud-right">
-            <div class="hud-panel-header">
-                <span>QUICK COMMANDS</span>
-                <span class="hud-index">02</span>
-            </div>
-
-            <button class="quick-command" data-jarvis-command="Abra o YouTube" type="button">
-                <span class="quick-command-index">01</span>
-                <span>ABRIR YOUTUBE</span>
-                <b>↗</b>
-            </button>
-            <button class="quick-command" data-jarvis-command="Abra a calculadora" type="button">
-                <span class="quick-command-index">02</span>
-                <span>CALCULADORA</span>
-                <b>↗</b>
-            </button>
-            <button class="quick-command" data-jarvis-command="Pesquise ESP32 no Google" type="button">
-                <span class="quick-command-index">03</span>
-                <span>PESQUISAR ESP32</span>
-                <b>↗</b>
-            </button>
-            <button class="quick-command" data-jarvis-command="Que horas são?" type="button">
-                <span class="quick-command-index">04</span>
-                <span>HORÁRIO</span>
-                <b>↗</b>
-            </button>
-
-            <div class="hud-capabilities">
-                <span>VOICE</span>
-                <span>AI</span>
-                <span>WEB</span>
-                <span>PC</span>
-            </div>
-        </aside>
-
-        <section class="conversation-card" aria-live="polite">
-            <div class="conversation-accent"></div>
-            <div class="conversation-header">
-                <div>
-                    <span class="conversation-label">JARVIS RESPONSE CHANNEL</span>
-                    <small>INTERFACE DE COMANDO</small>
-                </div>
-                <span id="aiMode" class="ai-mode">voz + texto</span>
-            </div>
-            <p id="responseText">Ative o microfone e diga “Jarvis”, ou digite uma pergunta abaixo.</p>
-            <div class="conversation-hint">Ex.: “Jarvis, abra o YouTube” · “Jarvis, me explique o que é um CLP.”</div>
-        </section>
-    </main>
-
-    <div class="input-container">
-        <div class="command-label-row">
-            <span>COMMAND CONSOLE</span>
-            <span>ENTER PARA ENVIAR</span>
-        </div>
-        <div class="input-wrapper">
-            <button id="micBtn" class="mic-button" type="button" aria-label="Ativar ou desativar microfone" aria-pressed="false">
-                <span class="mic-radar" aria-hidden="true"></span>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"></path>
-                    <path d="M19 11a7 7 0 0 1-14 0"></path>
-                    <path d="M12 18v3"></path>
-                    <path d="M8 21h8"></path>
-                </svg>
-            </button>
-
-            <div class="input-field-shell">
-                <span class="input-prefix">›</span>
-                <input type="text" id="morphText" placeholder="Pergunte ou peça uma ação ao Jarvis..." maxlength="500" autocomplete="off">
-            </div>
-
-            <button id="typeBtn" type="button" aria-label="Enviar pergunta">
-                <span class="button-content">
-                    <span>EXECUTAR</span>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </span>
-            </button>
-        </div>
+<body data-state="idle">
+    <div id="info">
+        Black Hole Core<br>
+        <span style="font-size: 14px; opacity: 0.8;">Clique e arraste para orbitar o núcleo</span>
     </div>
 
-    <div class="edge-marker edge-marker-left" aria-hidden="true">JRV // LOCAL</div>
-    <div class="edge-marker edge-marker-right" aria-hidden="true">CORE // ONLINE</div>
+    <div class="jarvis-overlay">
+        <header class="jarvis-topbar">
+            <div>
+                <span class="brand-kicker">PROJETO TIPO JARVIS</span>
+                <h1 class="jarvis-title">J.A.R.V.I.S.</h1>
+            </div>
+            <div class="status-pill" aria-live="polite">
+                <span id="statusDot" class="status-dot" data-state="idle"></span>
+                <span id="statusText">Jarvis em espera</span>
+            </div>
+        </header>
 
-    <script src="./js.js"></script>
-    <script src="./actions.js"></script>
-    <script src="./blackhole-ui.js"></script>
+        <div class="center-readout" aria-hidden="true">
+            <span id="coreActionLabel" class="core-action">JARVIS CORE ONLINE</span>
+        </div>
+
+        <section class="command-dock">
+            <div class="conversation-card" aria-live="polite">
+                <div class="conversation-header">
+                    <span>ASSISTENTE IA</span>
+                    <small id="aiMode">Gemini + voz + ações</small>
+                </div>
+                <p id="responseText">Núcleo online. Diga “Jarvis” ou digite um comando.</p>
+                <div class="quick-row">
+                    <button class="quick-command" type="button" data-command="abra o YouTube">YouTube</button>
+                    <button class="quick-command" type="button" data-command="abra a calculadora">Calculadora</button>
+                    <button class="quick-command" type="button" data-command="abra o VS Code">VS Code</button>
+                    <button class="quick-command" type="button" data-command="que horas são">Hora</button>
+                    <button class="quick-command" type="button" data-command="quem é você">Identidade</button>
+                </div>
+            </div>
+
+            <div class="input-wrapper">
+                <button id="micBtn" type="button" aria-label="Ativar ou desativar microfone" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"></path>
+                        <path d="M19 11a7 7 0 0 1-14 0"></path>
+                        <path d="M12 18v3"></path>
+                        <path d="M8 21h8"></path>
+                    </svg>
+                </button>
+
+                <input type="text" id="morphText" placeholder="Pergunte ou peça uma ação ao Jarvis..." maxlength="500" autocomplete="off">
+
+                <button id="typeBtn" type="button" aria-label="Enviar comando">
+                    <span class="button-content">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <span>Enviar</span>
+                    </span>
+                </button>
+            </div>
+        </section>
+    </div>
+
+    <script src="assistant-core.js"></script>
+    <script src="actions.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>
