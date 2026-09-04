@@ -13,7 +13,8 @@ Protótipo de assistente J.A.R.V.I.S. com partículas 3D, comandos por voz, resp
 - Histórico curto da conversa no navegador.
 - Backend que mantém a chave do Gemini fora do frontend.
 - Endpoint `/api/chat` compatível com execução local e deploy serverless na Vercel.
-- Modelo padrão: `gemini-2.5-flash`.
+- Modelo padrão: `gemini-3.6-flash`.
+- Integração atualizada para a Gemini Interactions API.
 
 ## 1. Atualizar seu projeto local
 
@@ -47,11 +48,11 @@ Depois edite `.env`:
 
 ```env
 GEMINI_API_KEY=coloque_sua_chave_aqui
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.6-flash
 PORT=3000
 ```
 
-Se você já tinha criado o `.env` para a OpenAI, não precisa apagar o arquivo: apenas substitua as variáveis antigas pelas variáveis `GEMINI_API_KEY` e `GEMINI_MODEL` acima.
+Se o seu `.env` ainda estiver com `GEMINI_MODEL=gemini-2.5-flash`, altere para `gemini-3.6-flash`. O código também faz migração automática desse valor antigo para evitar quebra.
 
 > Nunca envie o arquivo `.env` para o GitHub. Ele já está incluído no `.gitignore`.
 
@@ -95,7 +96,7 @@ Também é possível digitar a pergunta na caixa inferior e pressionar Enter.
 index.html       Interface
 Style.css        Estilo visual
 js.js            Partículas, voz e lógica do frontend
-ai-core.js       Integração segura com Gemini
+ai-core.js       Integração segura com Gemini Interactions API
 api/chat.js      Endpoint serverless para a Vercel
 server.js        Servidor para teste local
 .env.example     Modelo das variáveis de ambiente
@@ -105,6 +106,6 @@ package.json     Scripts do projeto
 
 ## Deploy na Vercel
 
-Ao importar o repositório na Vercel, configure `GEMINI_API_KEY` como variável de ambiente do projeto. Opcionalmente configure `GEMINI_MODEL`.
+Ao importar o repositório na Vercel, configure `GEMINI_API_KEY` como variável de ambiente do projeto. Opcionalmente configure `GEMINI_MODEL=gemini-3.6-flash`.
 
 A chave deve existir somente como variável de ambiente no servidor e nunca dentro de `index.html` ou `js.js`.
