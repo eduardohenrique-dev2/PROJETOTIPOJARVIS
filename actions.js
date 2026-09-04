@@ -17,6 +17,9 @@ const JARVIS_APP_LABELS = {
     taskmanager: 'Gerenciador de Tarefas'
 };
 
+let lastAgentStatus = { online: false, configured: false };
+let agentStatusTimer = null;
+
 function getActionLabel(action) {
     if (action?.type === 'app') return JARVIS_APP_LABELS[action.target] || action.target;
     return JARVIS_WEB_TARGETS[action?.target]?.label || action?.target || 'destino';
@@ -44,28 +47,39 @@ window.executeJarvisAction = async function executeJarvisAction(action) {
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
+            // Se a aplicação estiver sendo servida sem o backend de ações, sites ainda podem abrir no próprio navegador.
             if ((response.status === 404 || response.status === 405) && action.type !== 'app') {
                 return openWebActionInBrowser(action);
             }
 
-            throw new Error(data.error || `Não consegui executar a ação (${response.status}).`);
+            const error = new Error(data.error || `Não consegui executar a ação (${response.status}).`);
+            error.code = data.code || 'ACTION_FAILED';
+            error.status = response.status;
+            throw error;
         }
 
         morphToText('PRONTO');
+        refreshAgentStatus();
         return {
             ok: true,
             message: data.message || `${label} aberto.`
         };
     } catch (error) {
         console.error('Falha ao executar ação:', error);
+        refreshAgentStatus();
 
-        if (action.type !== 'app') {
-            return openWebActionInBrowser(action);
+        if (['AGENT_OFFLINE', 'AGENT_TIMEOUT', 'AGENT_NOT_CONFIGURED'].includes(error.code)) {
+            return {
+                ok: false,
+                message: error.code === 'AGENT_NOT_CONFIGURED'
+                    ? 'Entendi a ação, mas o acesso remoto ao seu computador ainda não foi configurado na hospedagem.'
+                    : 'Entendi a ação, mas seu computador está offline ou o Jarvis Agent não está conectado.'
+            };
         }
 
         return {
             ok: false,
-            message: `Entendi o que você quis fazer, mas não consegui abrir ${label} neste computador.`
+            message: `Entendi o que você quis fazer, mas não consegui executar ${label} no computador.`
         };
     }
 };
@@ -106,3 +120,43 @@ function buildWebActionUrl(action) {
 
     return null;
 }
+
+async function refreshAgentStatus() {
+    const element = document.getElementById('agentStatusText');
+    if (!element) return;
+
+    try {
+        const response = await fetch('/api/agent-status', { cache: 'no-store' });
+        const data = await response.json().catch(() => ({}));
+
+        lastAgentStatus = data;
+
+        if (data.online) {
+            element.textContent = data.mode === 'local' ? 'PC LOCAL' : 'PC ONLINE';
+            element.style.color = '#72ffd2';
+            element.title = data.message || 'Computador conectado';
+            return;
+        }
+
+        element.textContent = data.configured === false ? 'PC NÃO CONFIG.' : 'PC OFFLINE';
+        element.style.color = data.configured === false ? '#ffd17a' : '#ff7b91';
+        element.title = data.message || 'Computador indisponível';
+    } catch (error) {
+        lastAgentStatus = { online: false, configured: false };
+        element.textContent = 'PC OFFLINE';
+        element.style.color = '#ff7b91';
+        element.title = 'Não foi possível consultar o status do computador';
+    }
+}
+
+function startAgentStatusMonitor() {
+    refreshAgentStatus();
+    clearInterval(agentStatusTimer);
+    agentStatusTimer = setInterval(refreshAgentStatus, 12_000);
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refreshAgentStatus();
+    });
+}
+
+startAgentStatusMonitor();
