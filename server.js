@@ -1,9 +1,9 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createJarvisReply } from './ai-core.js';
+import { executeSafeAction } from './local-actions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,29 +27,6 @@ const mimeTypes = {
     '.js': 'text/javascript; charset=utf-8'
 };
 
-const websiteTargets = {
-    youtube: { label: 'YouTube', url: 'https://www.youtube.com/' },
-    google: { label: 'Google', url: 'https://www.google.com/' },
-    github: { label: 'GitHub', url: 'https://github.com/' },
-    gmail: { label: 'Gmail', url: 'https://mail.google.com/' },
-    whatsapp: { label: 'WhatsApp Web', url: 'https://web.whatsapp.com/' },
-    spotify: { label: 'Spotify', url: 'https://open.spotify.com/' },
-    maps: { label: 'Google Maps', url: 'https://maps.google.com/' }
-};
-
-const windowsApps = {
-    calculator: { label: 'Calculadora', command: 'calc.exe', args: [] },
-    notepad: { label: 'Bloco de Notas', command: 'notepad.exe', args: [] },
-    explorer: { label: 'Explorador de Arquivos', command: 'explorer.exe', args: [] },
-    paint: { label: 'Paint', command: 'mspaint.exe', args: [] },
-    taskmanager: { label: 'Gerenciador de Tarefas', command: 'taskmgr.exe', args: [] },
-    vscode: {
-        label: 'Visual Studio Code',
-        command: 'cmd.exe',
-        args: ['/d', '/s', '/c', 'start', '', 'code']
-    }
-};
-
 const server = http.createServer(async (req, res) => {
     try {
         const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -60,6 +37,10 @@ const server = http.createServer(async (req, res) => {
 
         if (url.pathname === '/api/action') {
             return handleAction(req, res);
+        }
+
+        if (url.pathname === '/api/agent-status') {
+            return handleAgentStatus(req, res);
         }
 
         if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -128,97 +109,29 @@ async function handleAction(req, res) {
 
     try {
         const body = await readJsonBody(req);
-        const type = typeof body.type === 'string' ? body.type : '';
-        const target = typeof body.target === 'string' ? body.target : '';
-
-        if (type === 'website') {
-            const site = websiteTargets[target];
-            if (!site) return json(res, 400, { error: 'Site não permitido.' });
-
-            await openExternal(site.url);
-            return json(res, 200, {
-                ok: true,
-                action: 'website',
-                message: `${site.label} aberto.`
-            });
-        }
-
-        if (type === 'web-search') {
-            const query = typeof body.query === 'string' ? body.query.trim().slice(0, 500) : '';
-            if (!query) return json(res, 400, { error: 'Informe o que deseja pesquisar.' });
-
-            let url;
-            let label;
-
-            if (target === 'youtube') {
-                url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-                label = 'YouTube';
-            } else if (target === 'google') {
-                url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-                label = 'Google';
-            } else {
-                return json(res, 400, { error: 'Mecanismo de pesquisa não permitido.' });
-            }
-
-            await openExternal(url);
-            return json(res, 200, {
-                ok: true,
-                action: 'web-search',
-                message: `Pesquisa aberta no ${label}.`
-            });
-        }
-
-        if (type === 'app') {
-            if (process.platform !== 'win32') {
-                return json(res, 501, { error: 'A abertura de aplicativos desta versão está configurada para Windows.' });
-            }
-
-            const app = windowsApps[target];
-            if (!app) return json(res, 400, { error: 'Aplicativo não permitido.' });
-
-            await launchDetached(app.command, app.args);
-            return json(res, 200, {
-                ok: true,
-                action: 'app',
-                message: `${app.label} aberto.`
-            });
-        }
-
-        return json(res, 400, { error: 'Ação não reconhecida.' });
+        const result = await executeSafeAction(body);
+        return json(res, 200, result);
     } catch (error) {
         console.error('Erro ao executar ação local:', error);
-        return json(res, 500, {
-            error: 'Não consegui executar essa ação no computador.',
-            code: 'ACTION_FAILED'
+        return json(res, error.status || 500, {
+            error: error.message || 'Não consegui executar essa ação no computador.',
+            code: error.code || 'ACTION_FAILED'
         });
     }
 }
 
-function openExternal(url) {
-    if (process.platform === 'win32') {
-        return launchDetached('rundll32.exe', ['url.dll,FileProtocolHandler', url]);
+function handleAgentStatus(req, res) {
+    if (req.method !== 'GET') {
+        res.setHeader('Allow', 'GET');
+        return json(res, 405, { error: 'Método não permitido.' });
     }
 
-    if (process.platform === 'darwin') {
-        return launchDetached('open', [url]);
-    }
-
-    return launchDetached('xdg-open', [url]);
-}
-
-function launchDetached(command, args) {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command, args, {
-            detached: true,
-            stdio: 'ignore',
-            windowsHide: true
-        });
-
-        child.once('error', reject);
-        child.once('spawn', () => {
-            child.unref();
-            resolve();
-        });
+    return json(res, 200, {
+        online: true,
+        configured: true,
+        mode: 'local',
+        platform: process.platform,
+        message: 'Este navegador está conectado diretamente ao PC.'
     });
 }
 
@@ -239,6 +152,7 @@ function readJsonBody(req) {
             if (body.length > 1_000_000) {
                 const error = new Error('Corpo da requisição muito grande.');
                 error.code = 'INVALID_INPUT';
+                error.status = 413;
                 fail(error);
                 req.destroy();
             }
@@ -252,6 +166,7 @@ function readJsonBody(req) {
             } catch {
                 const error = new Error('JSON inválido.');
                 error.code = 'INVALID_INPUT';
+                error.status = 400;
                 fail(error);
             }
         });
